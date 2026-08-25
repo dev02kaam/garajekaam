@@ -1,0 +1,76 @@
+.character-rig {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: none;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.character-layer {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background-image: url("assets/garage-integrated-v2.png");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  pointer-events: none;
+  mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  will-change: transform, opacity;
+}
+
+.character-body { z-index: 1; }
+.character-head,
+.character-prop { z-index: 2; opacity: 0; }
+
+#don-rig { transform-origin: 21% 56%; }
+#don-body {
+  mask-image: radial-gradient(ellipse 17% 40% at 21% 55%, #000 0 76%, rgba(0, 0, 0, .9) 84%, rgba(0, 0, 0, .36) 94%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 17% 40% at 21% 55%, #000 0 76%, rgba(0, 0, 0, .9) 84%, rgba(0, 0, 0, .36) 94%, transparent 100%);
+}
+#don-head {
+  transform-origin: 21% 40%;
+  mask-image: radial-gradient(ellipse 5.2% 8.8% at 20.4% 41.2%, #000 0 54%, rgba(0, 0, 0, .76) 78%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 5.2% 8.8% at 20.4% 41.2%, #000 0 54%, rgba(0, 0, 0, .76) 78%, transparent 100%);
+}
+#don-prop {
+  transform-origin: 27% 56%;
+  mask-image: radial-gradient(ellipse 7.5% 16% at 27% 55%, #000 0 56%, rgba(0, 0, 0, .76) 78%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 7.5% 16% at 27% 55%, #000 0 56%, rgba(0, 0, 0, .76) 78%, transparent 100%);
+}
+
+#bardo-rig { transform-origin: 50% 56%; }
+#bardo-body {
+  mask-image: radial-gradient(ellipse 15% 39% at 50% 55%, #000 0 75%, rgba(0, 0, 0, .9) 84%, rgba(0, 0, 0, .36) 94%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 15% 39% at 50% 55%, #000 0 75%, rgba(0, 0, 0, .9) 84%, rgba(0, 0, 0, .36) 94%, transparent 100%);
+}
+#bardo-head {
+  transform-origin: 50% 39%;
+  mask-image: radial-gradient(ellipse 4.8% 8.4% at 49.8% 40.2%, #000 0 54%, rgba(0, 0, 0, .76) 78%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 4.8% 8.4% at 49.8% 40.2%, #000 0 54%, rgba(0, 0, 0, .76) 78%, transparent 100%);
+}
+#bardo-prop {
+  transform-origin: 43.5% 45%;
+  mask-image: radial-gradient(ellipse 8.5% 18% at 44% 44%, #000 0 53%, rgba(0, 0, 0, .76) 76%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 8.5% 18% at 44% 44%, #000 0 53%, rgba(0, 0, 0, .76) 76%, transparent 100%);
+}
+
+#doc-rig { transform-origin: 79% 56%; }
+#doc-body {
+  mask-image: radial-gradient(ellipse 16% 40% at 79% 55%, #000 0 76%, rgba(0, 0, 0, .9) 84%, rgba(0, 0, 0, .36) 94%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 16% 40% at 79% 55%, #000 0 76%, rgba(0, 0, 0, .9) 84%, rgba(0, 0, 0, .36) 94%, transparent 100%);
+}
+#doc-head {
+  transform-origin: 79% 40%;
+  mask-image: radial-gradient(ellipse 5% 9.2% at 78.8% 40.5%, #000 0 54%, rgba(0, 0, 0, .76) 78%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 5% 9.2% at 78.8% 40.5%, #000 0 54%, rgba(0, 0, 0, .76) 78%, transparent 100%);
+}
+#doc-prop {
+  transform-origin: 85% 56%;
+  mask-image: radial-gradient(ellipse 9.5% 18.5% at 85% 54%, #000 0 56%, rgba(0, 0, 0, .76) 78%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 9.5% 18.5% at 85% 54%, #000 0 56%, rgba(0, 0, 0, .76) 78%, transparent 100%);
+}

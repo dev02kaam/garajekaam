@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.1-custom",
+  "workflow": "general-video",
+  "category": "ambient-garage-loop",
+  "duration_s": 24,
+  "fps": 30,
+  "canvas": { "w": 1920, "h": 1080, "aspect": "16:9" },
+  "style": "Ilustracion editorial caricaturesca en un garaje domestico nocturno. Camara bloqueada y luz diegetica; los personajes interactivos se componen en el frontend.",
+  "export": "mp4",
+  "source_assets": {
+    "character_plate": "assets/garage-integrated-v2.png",
+    "clean_plate": "assets/garage-clean-plate.png",
+    "placement": "full-bleed 1920x1080"
+  },
+  "customize": {
+    "reuse_first_decision": "La busqueda local del catalogo no encontro un bloque de actuacion por personaje con cabeza, cuerpo y objeto independientes bajo camara fija; se compone a medida con reglas seek-safe.",
+    "animation_rules": [
+      "sine-wave-loop",
+      "ambient-glow-bloom",
+      "svg-icon-enrichment"
+    ],
+    "keyframe_mechanisms": [
+      "placa ambiental limpia sin personajes renderizados",
+      "luces y acentos SVG desfasados",
+      "path travel determinista sobre el cable"
+    ]
+  },
+  "motion": {
+    "camera": {
+      "rule": "locked-off",
+      "poses": [
+        { "t": 0, "x": 0, "y": 0, "scale": 1 },
+        { "t": 24, "x": 0, "y": 0, "scale": 1 }
+      ]
+    },
+    "characters_frontend_only": {
+      "don_prospecto": [
+        { "at": 2.2, "action": "inspect_document" },
+        { "at": 7.55, "action": "laugh" },
+        { "at": 12.95, "action": "lean_to_close_deal" },
+        { "at": 18.75, "action": "inspect_document" }
+      ],
+      "el_bardo": [
+        { "at": 4.55, "action": "quill_flourish" },
+        { "at": 10.45, "action": "bow" },
+        { "at": 16.2, "action": "chuckle" },
+        { "at": 21.35, "action": "quill_flourish" }
+      ],
+      "doc_bucle": [
+        { "at": 1.15, "action": "calibrate_clock" },
+        { "at": 8.75, "action": "eureka" },
+        { "at": 14.45, "action": "think" },
+        { "at": 20.05, "action": "calibrate_clock" }
+      ]
+    },
+    "ambient": {
+      "idle": "character idles are rendered interactively by the React frontend",
+      "signal_trips": [[0.42, 3.08], [6.4, 9.08], [12.36, 15.04], [18.3, 20.98]],
+      "clock": "four exact rotations around explicit SVG pivot",
+      "dust": "fourteen deterministic closed trajectories",
+      "fluorescent": "six bounded light breaths"
+    }
+  },
+  "loop_contract": {
+    "first_frame_equals_last_frame": true,
+    "tail_frame": 719,
+    "exact_end_state_s": 24,
+    "constraints": [
+      "no camera transform",
+      "no random runtime state",
+      "no infinite repeats",
+      "no text or audio",
+      "all ambient cycles finish on their neutral state"
+    ]
+  },
+  "proof_times_s": [0, 2.8, 7.9, 10.9, 13.4, 16.6, 19.2, 21.8, 23.967]
+}

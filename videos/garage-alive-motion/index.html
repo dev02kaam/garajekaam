@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <link rel="stylesheet" href="character-motion.css">
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      :root {
+        --ink: #071015;
+        --cool-light: #e9f3f3;
+        --signal: #f4a02e;
+        --signal-hot: #ff641f;
+        --screen: #18b7c8;
+      }
+
+      * { box-sizing: border-box; }
+
+      html,
+      body {
+        width: 1920px;
+        height: 1080px;
+        margin: 0;
+        overflow: hidden;
+        background: var(--ink);
+      }
+
+      #stage,
+      #garage-scene,
+      #garage-world {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+      }
+
+      #garage-scene,
+      #garage-world { position: absolute; inset: 0; }
+
+      #garage-clean-plate {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        pointer-events: none;
+        user-select: none;
+      }
+
+      .diegetic-layer,
+      .signal-layer,
+      .detail-layer,
+      .dust-layer {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+      }
+
+      .diegetic-layer { z-index: 3; mix-blend-mode: screen; }
+      .signal-layer { z-index: 4; overflow: visible; }
+      .detail-layer { z-index: 5; overflow: visible; }
+      .dust-layer { z-index: 4; overflow: visible; mix-blend-mode: screen; }
+
+      .light-mask {
+        position: absolute;
+        transform-origin: 50% 50%;
+        will-change: transform, opacity;
+      }
+
+      #fluorescent-glow {
+        left: 43%;
+        top: -2%;
+        width: 19%;
+        height: 10%;
+        border-radius: 50%;
+        background: var(--cool-light);
+        filter: blur(32px);
+      }
+
+      #don-monitor-glow {
+        left: 1.4%;
+        top: 43%;
+        width: 8.5%;
+        height: 13%;
+        border-radius: 10px;
+        background: #8bdde4;
+        filter: blur(16px);
+        opacity: 0;
+      }
+
+      #bardo-monitor-glow {
+        left: 35.5%;
+        top: 43.5%;
+        width: 7.2%;
+        height: 13.5%;
+        border-radius: 8px;
+        background: var(--screen);
+        filter: blur(14px);
+        opacity: 0;
+      }
+
+      #doc-clock-glow {
+        left: 80.2%;
+        top: 46.2%;
+        width: 9.5%;
+        height: 17%;
+        border-radius: 50%;
+        background: var(--signal);
+        filter: blur(20px);
+        opacity: 0;
+      }
+
+      #signal-path { fill: none; stroke: none; }
+      .signal-particle { opacity: 0; }
+      .signal-halo { fill: var(--signal-hot); opacity: .24; }
+      .signal-core { fill: var(--signal); }
+
+      #clock-hand {
+        stroke: #ffb23d;
+        stroke-width: 3;
+        stroke-linecap: round;
+        opacity: .82;
+      }
+
+      #clock-pin { fill: #ffe7a2; opacity: .88; }
+
+      .character-blink {
+        fill: none;
+        stroke: #2d1b12;
+        stroke-width: 7;
+        stroke-linecap: round;
+        opacity: 0;
+      }
+
+      .action-accent {
+        fill: none;
+        stroke-linecap: round;
+        stroke-width: 5;
+        opacity: 0;
+      }
+
+      #don-laugh-accent { stroke: #ff9b36; }
+      #bardo-flourish-accent { stroke: #f3c94b; }
+      #doc-eureka-accent { stroke: #58d9b2; }
+
+      .dust-particle { fill: var(--cool-light); will-change: transform, opacity; }
+    </style>
+  </head>
+  <body>
+    <main id="stage" data-composition-id="garage-alive" data-start="0" data-duration="24" data-fps="30" data-width="1920" data-height="1080">
+      <section id="garage-scene" class="clip" data-start="0" data-duration="24" data-track-index="1" aria-label="Garaje doméstico con tres personajes trabajando">
+        <div id="garage-world" data-layout-allow-overflow="true">
+          <img id="garage-clean-plate" src="assets/garage-clean-plate.png" alt="" width="1920" height="1080" draggable="false">
+
+          <div id="don-rig" class="character-rig" data-hidden data-layout-ignore aria-hidden="true">
+            <span id="don-body" class="character-layer character-body"></span>
+            <span id="don-head" class="character-layer character-head"></span>
+            <span id="don-prop" class="character-layer character-prop"></span>
+          </div>
+          <div id="bardo-rig" class="character-rig" data-hidden data-layout-ignore aria-hidden="true">
+            <span id="bardo-body" class="character-layer character-body"></span>
+            <span id="bardo-head" class="character-layer character-head"></span>
+            <span id="bardo-prop" class="character-layer character-prop"></span>
+          </div>
+          <div id="doc-rig" class="character-rig" data-hidden data-layout-ignore aria-hidden="true">
+            <span id="doc-body" class="character-layer character-body"></span>
+            <span id="doc-head" class="character-layer character-head"></span>
+            <span id="doc-prop" class="character-layer character-prop"></span>
+          </div>
+
+          <div class="diegetic-layer" aria-hidden="true">
+            <div id="fluorescent-glow" class="light-mask"></div>
+            <div id="don-monitor-glow" class="light-mask"></div>
+            <div id="bardo-monitor-glow" class="light-mask"></div>
+            <div id="doc-clock-glow" class="light-mask"></div>
+          </div>
+
+          <svg class="signal-layer" viewBox="0 0 1920 1080" aria-hidden="true">
+            <path id="signal-path" d="M 390 805 C 520 865, 630 842, 720 873 C 835 911, 955 883, 1060 902 C 1190 930, 1325 875, 1440 835 C 1555 795, 1602 720, 1650 626" />
+            <g id="signal-particle-primary" class="signal-particle"><circle class="signal-halo" r="11" /><circle class="signal-core" r="4.8" /></g>
+            <g id="signal-particle-secondary" class="signal-particle"><circle class="signal-halo" r="8" /><circle class="signal-core" r="3.4" /></g>
+          </svg>
+
+          <svg class="detail-layer" viewBox="0 0 1920 1080" data-layout-ignore aria-hidden="true">
+            <line id="clock-hand" x1="1634" y1="595" x2="1622" y2="565" />
+            <circle id="clock-pin" cx="1634" cy="595" r="3.2" />
+
+            <g id="don-blink" class="character-blink">
+              <path d="M 344 407 Q 356 414 368 407" /><path d="M 383 407 Q 394 413 404 405" />
+            </g>
+            <g id="bardo-blink" class="character-blink">
+              <path d="M 918 397 Q 930 404 942 397" /><path d="M 954 393 Q 966 400 977 392" />
+            </g>
+            <g id="doc-blink" class="character-blink">
+              <path d="M 1460 423 Q 1472 430 1484 422" /><path d="M 1494 421 Q 1506 428 1517 419" />
+            </g>
+
+            <g id="don-laugh-accent" class="action-accent">
+              <path d="M 425 367 Q 448 350 463 327" /><path d="M 438 392 Q 466 385 484 369" />
+            </g>
+            <g id="bardo-flourish-accent" class="action-accent">
+              <path d="M 774 375 Q 728 337 744 296" /><path d="M 792 359 Q 762 323 781 294" />
+            </g>
+            <g id="doc-eureka-accent" class="action-accent">
+              <path d="M 1433 332 L 1417 303" /><path d="M 1467 319 L 1461 282" /><path d="M 1502 327 L 1513 293" />
+            </g>
+          </svg>
+
+          <svg class="dust-layer" viewBox="0 0 1920 1080" aria-hidden="true">
+            <circle class="dust-particle" cx="560" cy="122" r="1.4" /><circle class="dust-particle" cx="674" cy="184" r="2.1" />
+            <circle class="dust-particle" cx="805" cy="112" r="1.6" /><circle class="dust-particle" cx="1010" cy="205" r="2.7" />
+            <circle class="dust-particle" cx="1218" cy="142" r="1.9" /><circle class="dust-particle" cx="713" cy="692" r="1.5" />
+            <circle class="dust-particle" cx="861" cy="742" r="2.4" /><circle class="dust-particle" cx="1048" cy="664" r="1.8" />
+            <circle class="dust-particle" cx="1202" cy="784" r="3.1" /><circle class="dust-particle" cx="104" cy="765" r="2.2" />
+            <circle class="dust-particle" cx="238" cy="850" r="1.3" /><circle class="dust-particle" cx="328" cy="746" r="2.8" />
+            <circle class="dust-particle" cx="1702" cy="756" r="1.7" /><circle class="dust-particle" cx="1784" cy="882" r="2.5" />
+          </svg>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      const duration = 24;
+      const tl = gsap.timeline({ paused: true });
+      const fluorescent = document.getElementById("fluorescent-glow");
+      const signalPath = document.getElementById("signal-path");
+      const primarySignal = document.getElementById("signal-particle-primary");
+      const secondarySignal = document.getElementById("signal-particle-secondary");
+      const clockHand = document.getElementById("clock-hand");
+      const dustElements = Array.from(document.querySelectorAll(".dust-particle"));
+
+      const idleConfigs = [
+        { element: document.getElementById("don-rig"), phase: 0, y: 2.3, x: 1.1, rotation: .16, octave: .58 },
+        { element: document.getElementById("bardo-rig"), phase: 1.8, y: 2.0, x: .8, rotation: .13, octave: .71 },
+        { element: document.getElementById("doc-rig"), phase: 3.4, y: 2.5, x: 1.0, rotation: .18, octave: .63 },
+      ];
+      const idleState = { phase: 0 };
+      const applyIdles = () => {
+        idleConfigs.forEach((config) => {
+          const primary = Math.sin(idleState.phase + config.phase);
+          const secondary = Math.sin(idleState.phase * 2.7 + config.phase * 1.4);
+          const x = primary * config.x + secondary * config.x * .24;
+          const y = primary * config.y + secondary * config.y * .19;
+          const rotation = primary * config.rotation + secondary * config.rotation * .22;
+          config.element.style.transform = `translate(${x}px, ${y}px) rotate(${rotation}deg)`;
+        });
+      };
+      applyIdles();
+      tl.to(idleState, { phase: Math.PI * 2 * 7, duration, ease: "none", onUpdate: applyIdles }, 0);
+
+      const bodyAction = (selector, start, frames) => {
+        tl.to(selector, { keyframes: frames, ease: "none", immediateRender: false }, start);
+      };
+
+      const overlayAction = (selector, start, frames) => {
+        tl.to(selector, {
+          keyframes: [
+            { opacity: 0, x: 0, y: 0, rotation: 0, scale: 1, duration: .01 },
+            { opacity: 1, duration: .12, ease: "power2.out" },
+            ...frames,
+            { opacity: 0, x: 0, y: 0, rotation: 0, scale: 1, duration: .16, ease: "power2.in" },
+          ],
+          ease: "none",
+          immediateRender: false,
+        }, start);
+      };
+
+      const donInspect = (start) => {
+        bodyAction("#don-body", start, [
+          { x: 0, y: 0, rotation: 0, scale: 1, duration: .01 },
+          { x: 3, y: 5, rotation: .45, scale: 1.003, duration: .38, ease: "power2.out" },
+          { x: 2, y: 4, rotation: .28, scale: 1.002, duration: .82, ease: "sine.inOut" },
+          { x: 0, y: 0, rotation: 0, scale: 1, duration: .42, ease: "power2.inOut" },
+        ]);
+        overlayAction("#don-head", start, [
+          { x: 4, y: 11, rotation: 2.6, duration: .38, ease: "power2.out" },
+          { x: 5, y: 12, rotation: 3.1, duration: .68, ease: "sine.inOut" },
+          { x: 2, y: 6, rotation: 1.2, duration: .25, ease: "power2.inOut" },
+        ]);
+        overlayAction("#don-prop", start + .05, [
+          { x: -3, y: -10, rotation: -3.4, scale: 1.008, duration: .34, ease: "power2.out" },
+          { x: 1, y: -12, rotation: 1.8, scale: 1.012, duration: .42, ease: "sine.inOut" },
+          { x: -1, y: -8, rotation: -.8, scale: 1.006, duration: .42, ease: "sine.inOut" },
+        ]);
+      };
+
+      const donLaugh = (start) => {
+        bodyAction("#don-body", start, [
+          { x: 0, y: 0, rotation: 0, scale: 1, duration: .01 },
+          { x: -3, y: -7, rotation: -.55, scale: 1.006, duration: .18, ease: "power2.out" },
+          { x: 2, y: 4, rotation: .35, scale: .998, duration: .16, ease: "power2.inOut" },
+          { x: -2, y: -5, rotation: -.35, scale: 1.004, duration: .16, ease: "power2.inOut" },
+          { x: 1, y: 3, rotation: .2, scale: .999, duration: .16, ease: "power2.inOut" },
+          { x: 0, y: 0, rotation: 0, scale: 1, duration: .36, ease: "power2.out" },
+        ]);
+        overlayAction("#don-head", start, [
+          { x: -3, y: -10, rotation: -3.2, scale: 1.014, duration: .2, ease: "power2.out" },
+          { x: 2, y: 3, rotation: 2.1, scale: .998, duration: .17, ease: "power2.inOut" },
+          { x: -2, y: -7, rotation: -2.3, scale: 1.009, duration: .17, ease: "power2.inOut" },
+          { x: 1, y: 1, rotation: .8, scale: 1.002, duration: .24, ease: "power2.out" },
+        ]);
+        tl.fromTo("#don-laugh-accent", { opacity: 0 }, { opacity: .9, duration: .16, ease: "power2.out" }, start + .16);
+        tl.to("#don-laugh-accent", { opacity: 0, duration: .42, ease: "power2.in" }, start + .58);
+      };
+
+      const donDeal = (start) => {
+        bodyAction("#don-body", start, [
+          { x: 0, y: 0, rotation: 0, scale: 1, duration: .01 },
+          { x: 8, y: -2, rotation: -.7, scale: 1.008, duration: .32, ease: "power3.out" },
+          { x: 7, y: -1, rotation: -.55, scale: 1.007, duration: .54, ease: "sine.inOut" },
+          { x: 0, y: 0, rotation: 0, scale: 1, duration: .38, ease: "power2.inOut" },
+        ]);
+        overlayAction("#don-head", start, [
+          { x: 5, y: -2, rotation: -2.8, scale: 1.008, duration: .31, ease: "power3.out" },
+          { x: 6, y: 0, rotation: -1.2, scale: 1.005, duration: .52, ease: "sine.inOut" },
+        ]);
+      };
+
+      donInspect(2.2);
+      donLaugh(7.55);
+      donDeal(12.95);
+      donInspect(18.75);
+
+      const bardoQuill = (start) => {
+        overlayAction("#bardo-prop", start, [
+          { x: -3, y: -8, rotation: -6, scale: 1.008, duration: .28, ease: "power2.out" },
+          { x: 4, y: -14, rotation: 7, scale: 1.013, duration: .34, ease: "power2.inOut" },
+          { x: -1, y: -5, rotation: -2.5, scale: 1.006, duration: .32, ease: "power2.out" },
+        ]);
+        overlayAction("#bardo-head", start, [
+          { x: -3, y: -2, rotation: -2.2, duration: .35, ease: "power2.out" },
+          { x: 2, y: -3, rotation: 1.3, duration: .46, ease: "sine.inOut" },
+        ]);
+        tl.fromTo("#bardo-flourish-accent", { opacity: 0 }, { opacity: .8, duration: .18, ease: "power2.out" }, start + .2);
+        tl.to("#bardo-flourish-accent", { opacity: 0, duration: .38, ease: "power2.in" }, start + .68);
+      };
+
+      const bardoBow = (start) => {
+        bodyAction("#bardo-body", start, [
+          { x: 0, y: 0, rotation: 0, scale: 1, duration: .01 },
+          { x: 1, y: 12, rotation: 1.15, scale: .995, duration: .38, ease: "power2.out" },
+          { x: 1, y: 13, rotation: 1.3, scale: .994, duration: .42, ease: "sine.inOut" },
+          { x: 0, y: 0, rotation: 0, scale: 1, duration: .42, ease: "power2.inOut" },
+        ]);
+        overlayAction("#bardo-head", start, [
+          { x: 1, y: 14, rotation: 3.7, duration: .38, ease: "power2.out" },
+          { x: 1, y: 15, rotation: 4.1, duration: .38, ease: "sine.inOut" },
+          { x: 0, y: 4, rotation: 1, duration: .23, ease: "power2.inOut" },
+        ]);
+      };
+
+      const bardoChuckle = (start) => {
+        bodyAction("#bardo-body", start, [
+          { x: 0, y: 0, rotation: 0, scale: 1, duration: .01 },
+          { x: -2, y: -5, rotation: -.35, scale: 1.004, duration: .2, ease: "power2.out" },
+          { x: 2, y: 2, rotation: .28, scale: .999, duration: .18, ease: "power2.inOut" },
+          { x: -1, y: -3, rotation: -.2, scale: 1.002, duration: .18, ease: "power2.inOut" },
+          { x: 0, y: 0, rotation: 0, scale: 1, duration: .38, ease: "power2.out" },
+        ]);
+        overlayAction("#bardo-head", start, [
+          { x: -2, y: -7, rotation: -2.5, scale: 1.008, duration: .22, ease: "power2.out" },
+          { x: 2, y: 2, rotation: 1.6, duration: .18, ease: "power2.inOut" },
+          { x: -1, y: -4, rotation: -1.3, duration: .18, ease: "power2.inOut" },
+        ]);
+      };
+
+      bardoQuill(4.55);
+      bardoBow(10.45);
+      bardoChuckle(16.2);
+      bardoQuill(21.35);
+
+      const docCalibrate = (start) => {
+        overlayAction("#doc-prop", start, [
+          { x: -2, y: -3, rotation: -2.8, scale: 1.012, duration: .28, ease: "power2.out" },
+          { x: 2, y: -5, rotation: 2.4, scale: 1.016, duration: .32, ease: "power2.inOut" },
+          { x: -1, y: -2, rotation: -.9, scale: 1.008, duration: .34, ease: "power2.out" },
+        ]);
+        overlayAction("#doc-head", start, [
+          { x: 6, y: 4, rotation: 3.2, duration: .32, ease: "power2.out" },
+          { x: 4, y: 2, rotation: 1.7, duration: .5, ease: "sine.inOut" },
+        ]);
+      };
+
+      const docEureka = (start) => {
+        bodyAction("#doc-body", start, [
+          { x: 0, y: 0, rotation: 0, scale: 1, duration: .01 },
+          { x: -2, y: -10, rotation: -.75, scale: 1.01, duration: .22, ease: "power3.out" },
+          { x: 2, y: 3, rotation: .42, scale: .998, duration: .2, ease: "power2.inOut" },
+          { x: 0, y: -3, rotation: -.22, scale: 1.003, duration: .26, ease: "power2.out" },
+          { x: 0, y: 0, rotation: 0, scale: 1, duration: .36, ease: "power2.out" },
+        ]);
+        overlayAction("#doc-head", start, [
+          { x: -2, y: -11, rotation: -4, scale: 1.018, duration: .24, ease: "power3.out" },
+          { x: 2, y: 2, rotation: 2, scale: .999, duration: .21, ease: "power2.inOut" },
+          { x: 0, y: -4, rotation: -.8, scale: 1.006, duration: .23, ease: "power2.out" },
+        ]);
+        tl.fromTo("#doc-eureka-accent", { opacity: 0 }, { opacity: .92, duration: .14, ease: "power2.out" }, start + .16);
+        tl.to("#doc-eureka-accent", { opacity: 0, duration: .46, ease: "power2.in" }, start + .62);
+      };
+
+      const docThink = (start) => {
+        overlayAction("#doc-head", start, [
+          { x: -5, y: 2, rotation: -3.4, duration: .34, ease: "power2.out" },
+          { x: 4, y: -2, rotation: 2.5, duration: .5, ease: "sine.inOut" },
+          { x: -1, y: 0, rotation: -.7, duration: .28, ease: "power2.out" },
+        ]);
+      };
+
+      docCalibrate(1.15);
+      docEureka(8.75);
+      docThink(14.45);
+      docCalibrate(20.05);
+
+      const addBlink = (selector, starts) => {
+        starts.forEach((start) => {
+          tl.fromTo(selector, { opacity: 0 }, { opacity: .9, duration: .065, ease: "power2.out" }, start);
+          tl.to(selector, { opacity: 0, duration: .09, ease: "power2.in" }, start + .065);
+        });
+      };
+      addBlink("#don-blink", [1.05, 5.9, 11.72, 17.38, 22.72]);
+      addBlink("#bardo-blink", [2.0, 7.85, 13.72, 19.48, 23.12]);
+      addBlink("#doc-blink", [3.72, 6.62, 12.38, 18.02, 23.5]);
+
+      const fluorescentState = { phase: -Math.PI / 2 };
+      const applyFluorescent = () => {
+        const wave = Math.sin(fluorescentState.phase);
+        fluorescent.style.opacity = String(.11 + wave * .045);
+        fluorescent.style.transform = `scale(${1.006 + wave * .006})`;
+      };
+      applyFluorescent();
+      tl.to(fluorescentState, { phase: -Math.PI / 2 + Math.PI * 12, duration, ease: "none", onUpdate: applyFluorescent }, 0);
+
+      const pulseGlow = (target, start, peak) => {
+        tl.fromTo(target, { opacity: 0, scale: .96 }, { opacity: peak, scale: 1, duration: .18, ease: "power2.out" }, start);
+        tl.to(target, { opacity: 0, scale: 1.035, duration: .52, ease: "power2.in" }, start + .18);
+      };
+      [2.2, 7.55, 12.95, 18.75].forEach((start) => pulseGlow("#don-monitor-glow", start, .22));
+      [4.55, 10.45, 16.2, 21.35].forEach((start) => pulseGlow("#bardo-monitor-glow", start, .28));
+      [1.15, 8.75, 14.45, 20.05].forEach((start) => pulseGlow("#doc-clock-glow", start, .3));
+
+      const clockState = { degrees: 0 };
+      const applyClock = () => clockHand.setAttribute("transform", `rotate(${clockState.degrees} 1634 595)`);
+      applyClock();
+      tl.to(clockState, { degrees: 1440, duration, ease: "none", onUpdate: applyClock }, 0);
+
+      const signalLength = signalPath.getTotalLength();
+      const setSignalPosition = (element, progress) => {
+        const bounded = Math.max(0, Math.min(1, progress));
+        const point = signalPath.getPointAtLength(signalLength * bounded);
+        element.setAttribute("transform", `translate(${point.x} ${point.y})`);
+      };
+      const addSignalTrip = (start, end) => {
+        const travel = { progress: 0 };
+        tl.to(travel, {
+          progress: 1,
+          duration: end - start,
+          ease: "none",
+          onUpdate: () => {
+            setSignalPosition(primarySignal, travel.progress);
+            setSignalPosition(secondarySignal, travel.progress - .055);
+          },
+        }, start);
+        tl.fromTo([primarySignal, secondarySignal], { opacity: 0 }, { opacity: 1, duration: .18, stagger: .04, ease: "power2.out" }, start);
+        tl.to([primarySignal, secondarySignal], { opacity: 0, duration: .2, stagger: .025, ease: "power2.in" }, end - .23);
+      };
+      addSignalTrip(.42, 3.08);
+      addSignalTrip(6.4, 9.08);
+      addSignalTrip(12.36, 15.04);
+      addSignalTrip(18.3, 20.98);
+
+      const dustConfig = [
+        [13, 8, 1, 2, .2, .1, .04], [18, 11, 2, 1, 1.1, .14, .06], [9, 15, 1, 3, 2.4, .09, .03],
+        [24, 10, 2, 3, .8, .16, .05], [15, 7, 3, 2, 2.8, .11, .04], [11, 17, 2, 1, 1.9, .08, .02],
+        [28, 12, 1, 2, .5, .17, .05], [16, 9, 3, 1, 2.1, .12, .04], [20, 15, 2, 3, 1.4, .15, .06],
+        [12, 8, 1, 2, 2.7, .1, .03], [8, 13, 2, 1, .3, .07, .02], [22, 10, 3, 2, 1.7, .14, .05],
+        [17, 14, 1, 3, 2.2, .11, .04], [30, 9, 2, 1, .9, .16, .05],
+      ];
+      const dustState = { phase: 0 };
+      const applyDust = () => {
+        dustElements.forEach((element, index) => {
+          const [dx, dy, fx, fy, phase, base, amp] = dustConfig[index];
+          const x = Math.sin(dustState.phase * fx + phase) * dx;
+          const y = Math.cos(dustState.phase * fy + phase) * dy;
+          element.setAttribute("transform", `translate(${x} ${y})`);
+          element.style.opacity = String(base + Math.sin(dustState.phase * 2 + phase) * amp);
+        });
+      };
+      applyDust();
+      tl.to(dustState, { phase: Math.PI * 4, duration, ease: "none", onUpdate: applyDust }, 0);
+
+      window.__timelines["garage-alive"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>
