@@ -31,6 +31,7 @@ import { campaignWebhookConfigured, launchCampaign } from './n8n-client.mjs'
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const isProduction = process.env.NODE_ENV === 'production'
 const port = Number(process.env.PORT || 4174)
+const host = process.env.RENDER ? '0.0.0.0' : '127.0.0.1'
 const sessionDurationMs = 8 * 60 * 60 * 1000
 const secureCookie = process.env.SESSION_COOKIE_SECURE === undefined
   ? isProduction
@@ -452,8 +453,8 @@ app.use((error, _req, res, _next) => {
   res.status(500).json({ code: 'INTERNAL_ERROR', message: 'No se pudo completar la operación.' })
 })
 
-const server = app.listen(port, '127.0.0.1', async () => {
-  console.log(`API de Garaje Kaam disponible en http://127.0.0.1:${port}`)
+const server = app.listen(port, host, async () => {
+  console.log(`API de Garaje Kaam escuchando en http://${host}:${port}`)
   if (await userQueries.count() === 0) console.log('No hay usuarios. Configura KAAM_INITIAL_ADMIN_* o ejecuta npm run user:init.')
 })
 
