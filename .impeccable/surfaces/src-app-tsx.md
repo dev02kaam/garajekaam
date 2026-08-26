@@ -30,7 +30,8 @@ El momento memorable es ver un lead recorrer físicamente las tres estaciones mi
 | Selector móvil de puestos | React + CSS | Rejilla táctil bajo el panorama con los cuatro workflows y la recreativa; mantiene todos los destinos visibles incluso cuando el personaje está fuera del recorte horizontal |
 | Recreativa | Parte del raster + React dialog | El cabinet pertenece físicamente a la escena y abre dos juegos al pulsarlo |
 | Franja de telemetría | HTML/CSS | Estado, colas y excepciones; valores marcados como Demo |
-| Accesos y sesión | React dialog + API Express/SQLite | El administrador abre desde la cabecera un CRUD responsive con búsqueda, roles y estados. La autenticación, autorización y sesión se resuelven en servidor con contraseñas derivadas, cookie HttpOnly y protección CSRF |
+| Accesos y sesión | React dialog + API Express/PostgreSQL | El administrador abre desde la cabecera un CRUD responsive con búsqueda, roles y estados. Usuarios y sesiones viven en el esquema aislado `garaje_kaam`; la autenticación, autorización y sesión se resuelven en servidor con contraseñas derivadas, cookie HttpOnly y protección CSRF |
+| Datos operativos | API Express + vistas PostgreSQL de Ficharia | Los historiales y estados se leen directamente de vistas seguras y con consultas acotadas; los webhooks quedan para comandos que ponen workflows en marcha |
 | Paneles de workflow | React dialog | Misma anatomía y materiales propios de cada personaje; El Visionario separa preparación, actividad e historial buscable, hace explícita la diferencia entre empresas seleccionadas y contactadas y permite desplegar sus incidencias de entrega; El Bardo separa ejecución e historial de conversaciones; Doc Bucle muestra una cola de recontactos con intervalo fijo de siete días y un historial buscable; el Taller Creativo de Frida separa creación y biblioteca visual, admite prompt y referencia, muestra una vista previa y prepara el relevo de una pieza aprobada hacia El Visionario |
 | Biblioteca del Taller Creativo | React + raster generado | Tres visuales editoriales coherentes sirven como datos de demostración; cada registro conserva prompt, referencia y estado, puede buscarse, descargarse y reutilizarse como nueva referencia |
 | Snake y bloques | Canvas | Jugables con teclado y controles táctiles; puntuación y reinicio |
@@ -38,6 +39,7 @@ El momento memorable es ver un lead recorrer físicamente las tres estaciones mi
 
 ## Decisiones abiertas
 
-- Endpoints y contratos definitivos con n8n.
+- Contratos definitivos de los webhooks de comando de n8n.
+- Despliegue de las migraciones PostgreSQL de campañas, seguimiento semanal, creatividades y jobs.
 - Proveedor y contrato de generación visual, envío de revisión por correo, webhook de aprobación y mecanismo para marcar la imagen activa de El Visionario.
 - Métricas y datos reales de producción.

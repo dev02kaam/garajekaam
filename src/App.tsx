@@ -384,7 +384,7 @@ function App() {
             </main>
           </div>
 
-          <DashboardModal agent={activeAgent} onClose={() => setActiveAgent(null)} />
+          <DashboardModal agent={activeAgent} onClose={() => setActiveAgent(null)} csrfToken={sessionState?.csrfToken ?? ''} />
           <ArcadeModal open={arcadeOpen} onClose={() => setArcadeOpen(false)} />
           {authenticatedUser?.role === 'admin' && sessionState && (
             <UserManagementModal

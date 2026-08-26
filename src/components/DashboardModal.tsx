@@ -23,12 +23,20 @@ import { useEffect, useRef, useState } from 'react'
 import marketingAgriculture from '../assets/marketing-agriculture-automation.webp'
 import marketingCreativeStudio from '../assets/marketing-creative-studio.webp'
 import marketingWinery from '../assets/marketing-winery-followup.webp'
+import {
+  workflowApi,
+  type WorkflowCampaign,
+  type WorkflowConversation,
+  type WorkflowCreative,
+  type WorkflowFollowupConversation,
+} from '../workflowApi'
 
 export type AgentId = 'prospecto' | 'bardo' | 'marketing' | 'bucle'
 
 type DashboardModalProps = {
   agent: AgentId | null
   onClose: () => void
+  csrfToken: string
 }
 
 type CsvSummary = {
@@ -73,7 +81,7 @@ type CampaignHistoryItem = {
   interested: number | null
   days: Array<{ weekday: string; date: string; segment: string; window: string; contacted: number }>
   deliveryIssues: CampaignDeliveryIssue[]
-  source: 'demo' | 'local'
+  source: 'demo' | 'local' | 'database'
 }
 
 type WorkflowRun = {
@@ -148,9 +156,9 @@ type MarketingAsset = {
   referenceName?: string
 }
 
-const PROMPT_HISTORY_KEY = 'garaje-kaam-prospecting-prompts'
-const PROSPECTING_WEBHOOK_URL = import.meta.env.VITE_N8N_PROSPECTING_WEBHOOK_URL?.trim()
+type WorkflowDataState = 'loading' | 'postgres' | 'unavailable' | 'error'
 
+const PROMPT_HISTORY_KEY = 'garaje-kaam-prospecting-prompts'
 const demoCampaigns: CampaignHistoryItem[] = [
   {
     id: 'CMP-SECTORES-0821',
@@ -306,6 +314,162 @@ function formatMoment(value: string) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(value))
+}
+
+function formatDateTime(value: string | null, fallback = 'Sin fecha') {
+  if (!value) return fallback
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return fallback
+  return new Intl.DateTimeFormat('es-ES', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
+function formatCampaignDay(value: string) {
+  const date = new Date(`${value}T12:00:00`)
+  if (Number.isNaN(date.getTime())) return { weekday: value, date: value }
+  return {
+    weekday: new Intl.DateTimeFormat('es-ES', { weekday: 'long' }).format(date),
+    date: new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short' }).format(date),
+  }
+}
+
+function relativeUntil(value: string | null) {
+  if (!value) return null
+  const milliseconds = new Date(value).getTime() - Date.now()
+  if (!Number.isFinite(milliseconds)) return null
+  if (milliseconds <= 0) return 'pendiente'
+  const totalMinutes = Math.ceil(milliseconds / 60_000)
+  const days = Math.floor(totalMinutes / 1_440)
+  const hours = Math.floor((totalMinutes % 1_440) / 60)
+  const minutes = totalMinutes % 60
+  return days ? `${days} d ${hours} h` : hours ? `${hours} h ${minutes} min` : `${minutes} min`
+}
+
+function workflowDataLabel(state: WorkflowDataState) {
+  if (state === 'postgres') return 'PostgreSQL · datos reales'
+  if (state === 'loading') return 'Consultando PostgreSQL…'
+  if (state === 'unavailable') return 'Módulo pendiente en PostgreSQL'
+  return 'PostgreSQL no disponible'
+}
+
+function mapCampaign(campaign: WorkflowCampaign): CampaignHistoryItem {
+  return {
+    id: campaign.id,
+    title: campaign.title,
+    filename: campaign.filename,
+    createdAt: campaign.createdAt,
+    csvRows: campaign.csvRows,
+    csvValid: campaign.csvValid,
+    prompt: campaign.prompt,
+    status: campaign.status,
+    selectedCompanies: campaign.selectedCompanies,
+    companiesContacted: campaign.companiesContacted,
+    replies: campaign.replies,
+    interested: campaign.interested,
+    days: campaign.days.map((day) => ({ ...day, ...formatCampaignDay(day.date) })),
+    deliveryIssues: campaign.deliveryIssues.map((issue) => ({
+      ...issue,
+      attemptedAt: formatDateTime(issue.attemptedAt),
+    })),
+    source: 'database',
+  }
+}
+
+function mapBardoConversation(conversation: WorkflowConversation): BardoConversation {
+  return {
+    id: conversation.id,
+    contact: conversation.contact,
+    company: conversation.company,
+    email: conversation.email,
+    lastActivity: formatDateTime(conversation.lastActivity),
+    emails: conversation.emails.map((email) => ({
+      id: email.id,
+      subject: email.subject,
+      receivedAt: formatDateTime(email.receivedAt),
+      duration: '—',
+      status: email.status,
+      completedSteps: email.status === 'completed' ? 5 : 3,
+      summary: email.summary,
+    })),
+  }
+}
+
+function mapBucleConversation(conversation: WorkflowFollowupConversation): BucleConversation {
+  const orderedEvents = [...conversation.events].sort((left, right) => (
+    new Date(left.dueAt || left.sentAt || 0).getTime() - new Date(right.dueAt || right.sentAt || 0).getTime()
+  ))
+  const firstDue = orderedEvents.find((event) => event.dueAt)?.dueAt ?? null
+  const bardoDate = firstDue ? new Date(new Date(firstDue).getTime() - 7 * 86_400_000).toISOString() : null
+  const events: BucleEvent[] = [
+    ...(bardoDate ? [{
+      id: `${conversation.id}-bardo`,
+      title: 'Mensaje de El Bardo',
+      at: formatDateTime(bardoDate),
+      note: 'Inicio de la espera semanal',
+      type: 'bardo' as const,
+    }] : []),
+    ...orderedEvents.flatMap((event) => {
+      const items: BucleEvent[] = []
+      if (event.sentAt) items.push({
+        id: `${event.id}-sent`,
+        title: `Recontacto automático ${event.followUpNumber}`,
+        at: formatDateTime(event.sentAt),
+        note: event.error?.message || 'Enviado tras 7 días sin respuesta',
+        type: 'follow-up',
+      })
+      if (event.responseDetectedAt) items.push({
+        id: `${event.id}-reply`,
+        title: 'Respuesta recibida',
+        at: formatDateTime(event.responseDetectedAt),
+        note: 'Seguimiento cerrado',
+        type: 'reply',
+      })
+      return items
+    }),
+  ]
+
+  return {
+    id: conversation.id,
+    contact: conversation.contact,
+    company: conversation.company,
+    email: conversation.email,
+    state: conversation.state === 'waiting' ? 'waiting' : 'replied',
+    lastBardoMessageAt: formatDateTime(bardoDate, 'No disponible'),
+    nextFollowUpAt: conversation.nextFollowUpAt ? formatDateTime(conversation.nextFollowUpAt) : null,
+    nextIn: relativeUntil(conversation.nextFollowUpAt),
+    followUpCount: conversation.followUpCount,
+    events,
+  }
+}
+
+function mapMarketingAsset(asset: WorkflowCreative): MarketingAsset | null {
+  if (!asset.image) return null
+  let image: string
+  try {
+    const url = new URL(asset.image, window.location.origin)
+    if (url.origin !== window.location.origin && url.protocol !== 'https:') return null
+    image = url.href
+  } catch {
+    return null
+  }
+  const status: MarketingAssetStatus = asset.isActive || ['approved', 'active'].includes(asset.status)
+    ? 'approved'
+    : ['review_pending', 'in_review', 'review_requested'].includes(asset.status)
+      ? 'in-review'
+      : 'draft'
+  return {
+    id: asset.id,
+    title: asset.title,
+    prompt: asset.prompt,
+    image,
+    createdAt: formatDateTime(asset.createdAt),
+    status,
+  }
 }
 
 const bucleConversations: BucleConversation[] = [
@@ -517,7 +681,7 @@ function ModalShell({ agent, onClose, children }: DashboardModalProps & { childr
   )
 }
 
-function ProspectoDashboard() {
+function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
   const prepareTabRef = useRef<HTMLButtonElement>(null)
   const activityTabRef = useRef<HTMLButtonElement>(null)
   const campaignHistoryTabRef = useRef<HTMLButtonElement>(null)
@@ -530,20 +694,48 @@ function ProspectoDashboard() {
   const [activeTab, setActiveTab] = useState<'prepare' | 'activity' | 'history'>('prepare')
   const [campaignQuery, setCampaignQuery] = useState('')
   const [selectedCampaignId, setSelectedCampaignId] = useState(demoCampaigns[0].id)
+  const [databaseCampaigns, setDatabaseCampaigns] = useState<CampaignHistoryItem[]>([])
+  const [campaignDataState, setCampaignDataState] = useState<WorkflowDataState>('loading')
+  const [campaignWebhookReady, setCampaignWebhookReady] = useState(false)
   const [run, setRun] = useState<WorkflowRun>({
     state: 'idle',
-    message: PROSPECTING_WEBHOOK_URL ? 'Preparado para recibir una campaña.' : 'Webhook de n8n pendiente de configurar.',
+    message: 'Comprobando la conexión con n8n…',
   })
 
   useEffect(() => {
     localStorage.setItem(PROMPT_HISTORY_KEY, JSON.stringify(history))
   }, [history])
 
+  useEffect(() => {
+    let active = true
+    Promise.all([workflowApi.campaigns(200), workflowApi.config()])
+      .then(([result, config]) => {
+        if (!active) return
+        const mapped = result.campaigns.map(mapCampaign)
+        setDatabaseCampaigns(mapped)
+        setCampaignDataState(result.available ? 'postgres' : 'unavailable')
+        if (mapped[0]) setSelectedCampaignId(mapped[0].id)
+        setCampaignWebhookReady(config.campaignWebhookConfigured)
+        setRun((current) => current.state === 'idle' ? {
+          ...current,
+          message: config.campaignWebhookConfigured
+            ? 'Preparado para recibir una campaña.'
+            : 'Webhook de campañas de n8n pendiente de configurar.',
+        } : current)
+      })
+      .catch(() => {
+        if (!active) return
+        setCampaignDataState('error')
+        setRun((current) => current.state === 'idle' ? { ...current, message: 'No se pudo comprobar la conexión con n8n.' } : current)
+      })
+    return () => { active = false }
+  }, [])
+
   const readCsv = (file?: File) => {
     setError('')
     setRun({
       state: 'idle',
-      message: PROSPECTING_WEBHOOK_URL ? 'Preparado para recibir una campaña.' : 'Webhook de n8n pendiente de configurar.',
+      message: campaignWebhookReady ? 'Preparado para recibir una campaña.' : 'Webhook de campañas de n8n pendiente de configurar.',
     })
     if (!file) return
     if (!file.name.toLowerCase().endsWith('.csv')) {
@@ -594,7 +786,7 @@ function ProspectoDashboard() {
     setError('')
     setRun({
       state: 'idle',
-      message: PROSPECTING_WEBHOOK_URL ? 'Preparado para recibir una campaña.' : 'Webhook de n8n pendiente de configurar.',
+      message: campaignWebhookReady ? 'Preparado para recibir una campaña.' : 'Webhook de campañas de n8n pendiente de configurar.',
     })
   }
 
@@ -621,7 +813,7 @@ function ProspectoDashboard() {
     setError('')
     setActiveTab('activity')
 
-    if (!PROSPECTING_WEBHOOK_URL) {
+    if (!campaignWebhookReady) {
       updateHistoryStatus(historyId, 'failed')
       setRun({
         state: 'failed',
@@ -632,8 +824,6 @@ function ProspectoDashboard() {
     }
 
     setRun({ state: 'sending', message: 'Enviando CSV e instrucción a n8n…', updatedAt: createdAt })
-    const controller = new AbortController()
-    const timeout = window.setTimeout(() => controller.abort(), 30_000)
 
     try {
       const body = new FormData()
@@ -642,21 +832,11 @@ function ProspectoDashboard() {
       body.append('source', 'garaje-kaam')
       body.append('validContacts', String(summary.valid))
 
-      const response = await fetch(PROSPECTING_WEBHOOK_URL, {
-        method: 'POST',
-        body,
-        signal: controller.signal,
-      })
-      const contentType = response.headers.get('content-type') ?? ''
-      const payload: unknown = contentType.includes('application/json') ? await response.json() : await response.text()
-      const data = payload && typeof payload === 'object' ? payload as Record<string, unknown> : null
+      const payload = await workflowApi.launchCampaign(body, csrfToken)
+      const data = payload
       const remoteMessage = typeof data?.message === 'string'
         ? data.message
-        : typeof payload === 'string' && payload.trim()
-          ? payload.trim()
-          : 'n8n ha recibido la campaña.'
-
-      if (!response.ok) throw new Error(remoteMessage)
+        : 'n8n ha recibido la campaña.'
 
       const remoteStatus = String(data?.status ?? data?.state ?? 'accepted').toLowerCase()
       const completed = ['complete', 'completed', 'finished', 'success', 'succeeded'].includes(remoteStatus)
@@ -669,15 +849,11 @@ function ProspectoDashboard() {
         executionId: executionId == null ? undefined : String(executionId),
       })
     } catch (requestError) {
-      const message = requestError instanceof DOMException && requestError.name === 'AbortError'
-        ? 'n8n tardó más de 30 segundos en responder. Revisa la ejecución antes de reintentar.'
-        : requestError instanceof Error
+      const message = requestError instanceof Error
           ? requestError.message
           : 'No se pudo contactar con n8n.'
       updateHistoryStatus(historyId, 'failed')
       setRun({ state: 'failed', message, updatedAt: new Date().toISOString() })
-    } finally {
-      window.clearTimeout(timeout)
     }
   }
 
@@ -715,7 +891,10 @@ function ProspectoDashboard() {
     deliveryIssues: [],
     source: 'local',
   }))
-  const campaigns = [...localCampaigns, ...demoCampaigns]
+  const campaigns = [
+    ...localCampaigns,
+    ...(campaignDataState === 'postgres' ? databaseCampaigns : demoCampaigns),
+  ]
   const normalizedCampaignQuery = campaignQuery.trim().toLocaleLowerCase('es')
   const filteredCampaigns = campaigns.filter((campaign) => (
     `${campaign.title} ${campaign.filename} ${campaign.prompt} ${campaign.id} ${formatMoment(campaign.createdAt)} ${campaign.deliveryIssues.map((issue) => `${issue.company} ${issue.email} ${issue.segment} ${issue.reason}`).join(' ')}`
@@ -970,6 +1149,7 @@ function ProspectoDashboard() {
                   </div>
                   <div className="campaign-detail-labels">
                     {selectedCampaign.source === 'demo' && <span className="demo-label">Datos de demostración</span>}
+                    {selectedCampaign.source === 'database' && <span className="demo-label">PostgreSQL · datos reales</span>}
                     <span className="campaign-status-label" data-status={selectedCampaign.status}>{campaignStatusLabels[selectedCampaign.status]}</span>
                   </div>
                 </header>
@@ -1033,7 +1213,7 @@ function ProspectoDashboard() {
                           </li>
                         ))}
                       </ul>
-                      {selectedCampaign.source === 'demo' && <small className="campaign-issues-note">Datos de demostración · n8n deberá devolver la causa real de cada incidencia.</small>}
+                      {selectedCampaign.source === 'demo' && <small className="campaign-issues-note">{workflowDataLabel(campaignDataState)} · se muestra una campaña de ejemplo hasta desplegar el módulo.</small>}
                     </div>
                   </details>
                 )}
@@ -1129,23 +1309,43 @@ function BardoDashboard() {
   const [query, setQuery] = useState('')
   const [selectedConversationId, setSelectedConversationId] = useState(bardoConversations[0].id)
   const [selectedEmailId, setSelectedEmailId] = useState(bardoConversations[0].emails[0].id)
+  const [conversations, setConversations] = useState<BardoConversation[]>(bardoConversations)
+  const [conversationDataState, setConversationDataState] = useState<WorkflowDataState>('loading')
 
-  const liveSteps: BardoWorkflowStep[] = [
-    { ...BARDO_STAGE_COPY[0], state: 'complete', moment: '10:42:03' },
-    { ...BARDO_STAGE_COPY[1], state: 'complete', moment: '10:42:05' },
-    { ...BARDO_STAGE_COPY[2], state: 'complete', moment: '10:42:07' },
-    { title: 'Réplica en proceso', detail: 'Redactando la respuesta automática', state: 'active', moment: 'Ahora' },
-    { ...BARDO_STAGE_COPY[4], detail: 'Pendiente del resultado anterior', state: 'waiting', moment: '—' },
-  ]
+  useEffect(() => {
+    let active = true
+    workflowApi.conversations(200)
+      .then((result) => {
+        if (!active) return
+        const mapped = result.conversations.map(mapBardoConversation)
+        setConversationDataState(result.available ? 'postgres' : 'unavailable')
+        if (result.available) setConversations(mapped)
+        if (mapped[0]) {
+          setSelectedConversationId(mapped[0].id)
+          setSelectedEmailId(mapped[0].emails[0]?.id ?? '')
+        }
+      })
+      .catch(() => active && setConversationDataState('error'))
+    return () => { active = false }
+  }, [])
 
   const normalizedQuery = query.trim().toLocaleLowerCase('es')
-  const filteredConversations = bardoConversations.filter((conversation) => (
+  const filteredConversations = conversations.filter((conversation) => (
     `${conversation.contact} ${conversation.company} ${conversation.email} ${conversation.emails.map((email) => `${email.id} ${email.subject}`).join(' ')}`
       .toLocaleLowerCase('es')
       .includes(normalizedQuery)
   ))
   const selectedConversation = filteredConversations.find((conversation) => conversation.id === selectedConversationId) ?? filteredConversations[0] ?? null
   const selectedEmail = selectedConversation?.emails.find((email) => email.id === selectedEmailId) ?? selectedConversation?.emails[0] ?? null
+  const liveConversation = conversations.find((conversation) => conversation.emails.some((email) => email.status === 'active')) ?? null
+  const liveEmail = liveConversation?.emails.find((email) => email.status === 'active') ?? null
+  const liveSteps: BardoWorkflowStep[] = liveEmail
+    ? BARDO_STAGE_COPY.map((step, index) => ({
+        ...step,
+        state: index < liveEmail.completedSteps ? 'complete' : index === liveEmail.completedSteps ? 'active' : 'waiting',
+        moment: index < liveEmail.completedSteps ? 'Completado' : index === liveEmail.completedSteps ? 'Ahora' : '—',
+      }))
+    : []
   const selectedSteps: BardoWorkflowStep[] = selectedEmail
     ? BARDO_STAGE_COPY.map((step, index) => {
         const isComplete = index < selectedEmail.completedSteps
@@ -1168,7 +1368,7 @@ function BardoDashboard() {
 
   const selectConversation = (conversation: BardoConversation) => {
     setSelectedConversationId(conversation.id)
-    setSelectedEmailId(conversation.emails[0].id)
+    setSelectedEmailId(conversation.emails[0]?.id ?? '')
   }
 
   const changeTab = (tab: 'live' | 'history') => {
@@ -1219,12 +1419,19 @@ function BardoDashboard() {
             <header className="bardo-process-heading">
               <div>
                 <h3 id="bardo-process-title">Ejecución en curso</h3>
-                <p>Nora Vidal · Ánfora Studio</p>
+                <p>{liveConversation ? `${liveConversation.contact} · ${liveConversation.company}` : 'Sin ejecuciones activas'}</p>
               </div>
-              <span className="bardo-live-status"><i aria-hidden="true" /> Automático · Demo</span>
+              <span className="bardo-live-status"><i aria-hidden="true" /> Automático · {conversationDataState === 'postgres' ? 'PostgreSQL' : 'Demo'}</span>
             </header>
 
-            <BardoWorkflowProgress steps={liveSteps} label="Progreso de la ejecución actual" />
+            {liveEmail ? (
+              <BardoWorkflowProgress steps={liveSteps} label="Progreso de la ejecución actual" />
+            ) : (
+              <div className="bardo-history-empty" role="status">
+                <strong>Sin ejecuciones activas</strong>
+                <span>Las nuevas respuestas aparecerán aquí cuando el workflow empiece a procesarlas.</span>
+              </div>
+            )}
           </section>
         </section>
       ) : (
@@ -1234,7 +1441,7 @@ function BardoDashboard() {
               <h3>Historial de conversaciones</h3>
               <p>Revisa los correos recibidos de cada cliente y cómo procesó El Bardo cada uno.</p>
             </div>
-            <span>Datos de demostración</span>
+            <span>{workflowDataLabel(conversationDataState)}</span>
           </header>
 
           <label className="bardo-search">
@@ -1330,10 +1537,26 @@ function BucleDashboard() {
   const [activeTab, setActiveTab] = useState<'queue' | 'history'>('queue')
   const [query, setQuery] = useState('')
   const [selectedConversationId, setSelectedConversationId] = useState(bucleConversations[0].id)
+  const [conversations, setConversations] = useState<BucleConversation[]>(bucleConversations)
+  const [followupDataState, setFollowupDataState] = useState<WorkflowDataState>('loading')
 
-  const waitingConversations = bucleConversations.filter((conversation) => conversation.state === 'waiting')
+  useEffect(() => {
+    let active = true
+    workflowApi.followups(200)
+      .then((result) => {
+        if (!active) return
+        const mapped = result.conversations.map(mapBucleConversation)
+        setFollowupDataState(result.available ? 'postgres' : 'unavailable')
+        if (result.available) setConversations(mapped)
+        if (mapped[0]) setSelectedConversationId(mapped[0].id)
+      })
+      .catch(() => active && setFollowupDataState('error'))
+    return () => { active = false }
+  }, [])
+
+  const waitingConversations = conversations.filter((conversation) => conversation.state === 'waiting')
   const normalizedQuery = query.trim().toLocaleLowerCase('es')
-  const filteredConversations = bucleConversations.filter((conversation) => (
+  const filteredConversations = conversations.filter((conversation) => (
     `${conversation.contact} ${conversation.company} ${conversation.email} ${conversation.state}`
       .toLocaleLowerCase('es')
       .includes(normalizedQuery)
@@ -1390,7 +1613,7 @@ function BucleDashboard() {
               <h3>Seguimiento semanal</h3>
               <p>Conversaciones a las que El Bardo escribió y todavía no han respondido.</p>
             </div>
-            <span className="bucle-demo-label">Datos de demostración</span>
+            <span className="bucle-demo-label">{workflowDataLabel(followupDataState)}</span>
           </header>
 
           <div className="bucle-fixed-rule">
@@ -1428,7 +1651,7 @@ function BucleDashboard() {
               <h3>Historial de seguimiento</h3>
               <p>Busca una conversación y revisa sus recontactos semanales.</p>
             </div>
-            <span className="bucle-demo-label">Datos de demostración</span>
+            <span className="bucle-demo-label">{workflowDataLabel(followupDataState)}</span>
           </header>
 
           <label className="bucle-history-search">
@@ -1517,6 +1740,7 @@ function MarketingDashboard() {
   const [assets, setAssets] = useState<MarketingAsset[]>(demoMarketingAssets)
   const [previewAssetId, setPreviewAssetId] = useState(demoMarketingAssets[0].id)
   const [selectedAssetId, setSelectedAssetId] = useState(demoMarketingAssets[0].id)
+  const [creativeDataState, setCreativeDataState] = useState<WorkflowDataState>('loading')
   const [query, setQuery] = useState('')
   const [referencePreview, setReferencePreview] = useState<string | null>(null)
   const [referenceName, setReferenceName] = useState('')
@@ -1530,13 +1754,30 @@ function MarketingDashboard() {
     if (referenceObjectUrlRef.current) URL.revokeObjectURL(referenceObjectUrlRef.current)
   }, [])
 
+  useEffect(() => {
+    let active = true
+    workflowApi.creatives(200)
+      .then((result) => {
+        if (!active) return
+        const mapped = result.assets.map(mapMarketingAsset).filter((asset): asset is MarketingAsset => Boolean(asset))
+        setCreativeDataState(result.available ? 'postgres' : 'unavailable')
+        if (result.available) setAssets(mapped)
+        if (mapped[0]) {
+          setPreviewAssetId(mapped[0].id)
+          setSelectedAssetId(mapped[0].id)
+        }
+      })
+      .catch(() => active && setCreativeDataState('error'))
+    return () => { active = false }
+  }, [])
+
   const statusLabels: Record<MarketingAssetStatus, string> = {
     draft: 'Borrador',
     'in-review': 'En revisión',
     approved: 'Aprobada para El Visionario',
   }
 
-  const previewAsset = assets.find((asset) => asset.id === previewAssetId) ?? assets[0]
+  const previewAsset = assets.find((asset) => asset.id === previewAssetId) ?? assets[0] ?? demoMarketingAssets[0]
   const normalizedQuery = query.trim().toLocaleLowerCase('es')
   const filteredAssets = assets.filter((asset) => (
     `${asset.title} ${asset.prompt} ${asset.referenceName ?? ''} ${statusLabels[asset.status]}`
@@ -1766,7 +2007,7 @@ function MarketingDashboard() {
         <section id="marketing-library-panel" className="marketing-library-panel" role="tabpanel" aria-labelledby="marketing-library-tab">
           <header className="marketing-library-heading">
             <div><h3>Biblioteca visual</h3><p>Prompts, versiones y piezas preparadas para campañas.</p></div>
-            <span>Datos de demostración</span>
+            <span>{workflowDataLabel(creativeDataState)}</span>
           </header>
 
           <label className="marketing-search">
@@ -1837,11 +2078,11 @@ function MarketingDashboard() {
   )
 }
 
-export default function DashboardModal({ agent, onClose }: DashboardModalProps) {
+export default function DashboardModal({ agent, onClose, csrfToken }: DashboardModalProps) {
   if (!agent) return null
   return (
-    <ModalShell agent={agent} onClose={onClose}>
-      {agent === 'prospecto' && <ProspectoDashboard />}
+    <ModalShell agent={agent} onClose={onClose} csrfToken={csrfToken}>
+      {agent === 'prospecto' && <ProspectoDashboard csrfToken={csrfToken} />}
       {agent === 'bardo' && <BardoDashboard />}
       {agent === 'marketing' && <MarketingDashboard />}
       {agent === 'bucle' && <BucleDashboard />}

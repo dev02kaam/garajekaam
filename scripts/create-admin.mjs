@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline/promises'
 import { stdin, stdout } from 'node:process'
-import { db, databasePathForDisplay, userQueries } from '../server/database.mjs'
+import { closeDatabase, databasePathForDisplay, initializeDatabase, userQueries } from '../server/database.mjs'
 import { hashPassword } from '../server/security.mjs'
 
 function readArgument(name) {
@@ -62,6 +62,7 @@ function readHidden(prompt) {
 const rl = createInterface({ input: stdin, output: stdout })
 
 try {
+  await initializeDatabase()
   const defaultEmail = readArgument('email') || 'alex.benito@kaam.es'
   const defaultName = readArgument('name') || 'Alex Benito'
   const email = (await rl.question(`Correo del administrador [${defaultEmail}]: `)).trim().toLowerCase() || defaultEmail
@@ -70,7 +71,7 @@ try {
 
   if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 254) throw new Error('El correo no es válido.')
   if (displayName.length < 2 || displayName.length > 80) throw new Error('El nombre debe tener entre 2 y 80 caracteres.')
-  if (userQueries.findByEmail.get(email)) throw new Error('Ya existe un usuario con ese correo.')
+  if (await userQueries.findByEmail(email)) throw new Error('Ya existe un usuario con ese correo.')
 
   const password = await readHidden('Contraseña inicial: ')
   const confirmation = await readHidden('Repite la contraseña: ')
@@ -78,7 +79,7 @@ try {
   if (password.length < 12 || password.length > 128) throw new Error('La contraseña inicial debe tener entre 12 y 128 caracteres.')
 
   const now = new Date().toISOString()
-  userQueries.insert.run({
+  await userQueries.insert({
     id: randomUUID(),
     email,
     displayName,
@@ -95,5 +96,5 @@ try {
   process.exitCode = 1
   console.error(error.message)
 } finally {
-  db.close()
+  await closeDatabase()
 }

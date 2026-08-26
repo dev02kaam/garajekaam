@@ -26,11 +26,11 @@ Los workflows no aparecen como diagramas abstractos, sino como personajes que tr
 
 - Tres workflows de n8n ya definidos: prospección desde CSV, respuesta a interesados y seguimiento periódico de conversaciones sin respuesta. El Taller Creativo cuenta ya con su experiencia frontend, a la espera del contrato de generación, revisión por correo y aprobación en n8n.
 - El workflow de referencia existente contiene operaciones reales de IMAP, PostgreSQL, análisis y borrador mediante IA, esperas humanas, transporte SMTP/relay, bajas, revisión manual y auditoría operativa.
-- El frontend empieza como una experiencia demostrable con datos sintéticos claramente identificados; la conexión real con webhooks o API de n8n se abordará después.
+- PostgreSQL es la fuente de verdad compartida: el dashboard consulta directamente las vistas seguras de Ficharia para historiales y estados. Los webhooks de n8n se reservan para comandos que inician trabajo, como lanzar una campaña o solicitar una creatividad.
 
 ## Capabilities and Constraints
 
-- El acceso se gestiona con cuentas persistentes y sesiones de servidor. Los administradores disponen en la cabecera de un CRUD de usuarios con búsqueda, roles Administrador/Operador, activación, revocación de sesiones y borrado protegido. Las contraseñas nunca se guardan en el navegador ni en texto plano; la sesión usa una cookie `HttpOnly`, protección CSRF y caducidad deslizante de ocho horas.
+- El acceso se gestiona en el esquema PostgreSQL aislado `garaje_kaam`, dentro de la misma base que Ficharia. Los administradores disponen en la cabecera de un CRUD de usuarios con búsqueda, roles Administrador/Operador, activación, revocación de sesiones y borrado protegido. Las contraseñas nunca se guardan en el navegador ni en texto plano; la sesión usa una cookie `HttpOnly`, protección CSRF y caducidad deslizante de ocho horas.
 - Garaje panorámico con cinco avatares integrados: cuatro puestos de trabajo y un quinto personaje ambiental todavía sin función.
 - Panel emergente especializado por personaje/workflow.
 - El primer panel separa tres tareas en pestañas: preparar el CSV y la instrucción, seguir la actividad en curso y consultar un historial de campañas con buscador. El CSV puede ser una base grande y heterogénea; el prompt determina qué segmentos se seleccionan y en qué días y franjas se contactan. Cada campaña conserva ambos, distingue empresas del CSV, seleccionadas, contactadas y sin contactar, y muestra el calendario ejecutado por segmento junto con respuestas e interés. La diferencia entre seleccionadas y contactadas abre un detalle de incidencias por empresa, destinatario, segmento, momento y causa; el buscador también encuentra esos datos.
@@ -60,7 +60,7 @@ Los workflows no aparecen como diagramas abstractos, sino como personajes que tr
 ## Evidence on Hand
 
 - Workflow n8n de referencia: `C:\Users\USER\Desktop\Archivos_ABS\VisualStudio\flujoficharia\workflow\Ficharia _ AUTOSUFICIENTE _ IA guiada + espera 65-120 s terminado.json`.
-- No hay todavía logotipo, manual de marca, datos reales de campaña ni endpoints de n8n confirmados. No deben fabricarse como hechos.
+- La base PostgreSQL real contiene actualmente conversaciones, auditoría, campañas, seguimiento semanal y la vista unificada de jobs. El módulo creativo todavía depende de desplegar su migración operativa antes de mostrar datos reales.
 
 ## Product Principles
 
@@ -68,7 +68,7 @@ Los workflows no aparecen como diagramas abstractos, sino como personajes que tr
 - Lo divertido abre la puerta; la información operativa manda dentro del dashboard.
 - Mostrar siempre estado, próxima acción y excepciones.
 - Separar con claridad datos de demostración y datos reales.
-- Preparar todas las interacciones para una integración posterior con n8n sin rediseñar la experiencia.
+- Leer estado e historial desde PostgreSQL y usar n8n solo como capa de ejecución para comandos, sin duplicar estado mediante webhooks de notificación.
 
 ## Accessibility & Inclusion
 

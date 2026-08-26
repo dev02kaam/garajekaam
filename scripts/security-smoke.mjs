@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto'
-import { db, userQueries } from '../server/database.mjs'
+import { closeDatabase, initializeDatabase, userQueries } from '../server/database.mjs'
 import { hashPassword } from '../server/security.mjs'
 
 const baseUrl = String(process.env.KAAM_TEST_BASE_URL || 'http://127.0.0.1:4174').replace(/\/$/, '')
@@ -21,17 +21,19 @@ function cookieFrom(response) {
 
 async function request(path, { cookie = '', csrfToken = '', method = 'GET', body, requestOrigin = origin } = {}) {
   const headers = { Accept: 'application/json' }
+  const isForm = body instanceof FormData
   if (cookie) headers.Cookie = cookie
   if (method !== 'GET') headers.Origin = requestOrigin
   if (csrfToken) headers['X-CSRF-Token'] = csrfToken
-  if (body) headers['Content-Type'] = 'application/json'
+  if (body && !isForm) headers['Content-Type'] = 'application/json'
   if (forwardedHttps) headers['X-Forwarded-Proto'] = 'https'
-  return fetch(`${baseUrl}${path}`, { method, headers, body: body ? JSON.stringify(body) : undefined })
+  return fetch(`${baseUrl}${path}`, { method, headers, body: isForm ? body : body ? JSON.stringify(body) : undefined })
 }
 
 try {
+  await initializeDatabase()
   const now = new Date().toISOString()
-  userQueries.insert.run({
+  await userQueries.insert({
     id: testUserId,
     email: testEmail,
     displayName: 'Security Smoke Operator',
@@ -76,6 +78,26 @@ try {
   const forbiddenUsers = await request('/api/users', { cookie: authenticatedCookie.value })
   assert(forbiddenUsers.status === 403, `Un Operador pudo consultar usuarios (${forbiddenUsers.status}).`)
 
+  const campaignForm = new FormData()
+  campaignForm.append('csv', new Blob(['email,empresa\nsmoke@example.invalid,Smoke\n'], { type: 'text/csv' }), 'smoke.csv')
+  campaignForm.append('prompt', 'Prueba de seguridad sin envío')
+  campaignForm.append('source', 'garaje-kaam')
+  campaignForm.append('validContacts', '1')
+  const missingCampaignCsrf = await request('/api/workflows/campaigns/launch', {
+    cookie: authenticatedCookie.value,
+    method: 'POST',
+    body: campaignForm,
+  })
+  assert(missingCampaignCsrf.status === 403, `El comando de campaña sin CSRF respondió ${missingCampaignCsrf.status}.`)
+
+  const protectedCampaign = await request('/api/workflows/campaigns/launch', {
+    cookie: authenticatedCookie.value,
+    csrfToken: loginPayload.csrfToken,
+    method: 'POST',
+    body: campaignForm,
+  })
+  assert(protectedCampaign.status === 503, `El proxy sin webhook configurado respondió ${protectedCampaign.status}.`)
+
   const missingCsrf = await request('/api/auth/logout', { cookie: authenticatedCookie.value, method: 'POST' })
   assert(missingCsrf.status === 403, `Una mutación sin CSRF respondió ${missingCsrf.status}.`)
 
@@ -89,9 +111,9 @@ try {
   const expiredAccess = await request('/api/users', { cookie: authenticatedCookie.value })
   assert(expiredAccess.status === 401, `La sesión cerrada conservó acceso (${expiredAccess.status}).`)
 
-  console.log('Seguridad verificada: cookie, CSRF, origen, rol Operador y revocación de sesión.')
+  console.log('Seguridad verificada: cookie, CSRF, origen, rol Operador, proxy de campañas y revocación de sesión.')
 } finally {
-  userQueries.deleteSessionsForUser.run(testUserId)
-  userQueries.delete.run(testUserId)
-  db.close()
+  await userQueries.deleteSessionsForUser(testUserId)
+  await userQueries.delete(testUserId)
+  await closeDatabase()
 }
