@@ -1443,9 +1443,12 @@ footer span:last-child {
 }
 
 .dashboard-modal {
+  display: flex;
   width: min(1180px, 96vw);
   max-height: min(820px, 94vh);
-  overflow: auto;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
   border: 2px solid rgba(243, 239, 228, 0.25);
   background: #121b20;
   box-shadow: 16px 18px 0 rgba(0, 0, 0, 0.4);
@@ -1532,7 +1535,11 @@ footer span:last-child {
 }
 
 .dashboard-body {
-  min-height: 560px;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .status-chip {
@@ -1774,8 +1781,8 @@ footer span:last-child {
 /* Shakespeare dashboard */
 .bardo-control-room {
   display: block;
-  min-height: 620px;
-  background: #1b1121;
+  min-height: 0;
+  background: #eee5d4;
 }
 
 .bardo-tabs {
@@ -2170,6 +2177,87 @@ footer span:last-child {
 .bardo-email-detail .bardo-workflow { margin-top: 14px; }
 .bardo-email-detail .bardo-workflow li { min-height: 58px; }
 .bardo-email-detail .bardo-step-mark { background: #f8f2e7; }
+
+.bardo-mail-exchange {
+  margin-top: 24px;
+}
+
+.bardo-mail-exchange > header h4 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: 1.3rem;
+  text-transform: uppercase;
+}
+
+.bardo-mail-exchange > header p {
+  margin: 5px 0 0;
+  color: #6d626f;
+}
+
+.bardo-mail-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.bardo-mail-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid rgba(74, 51, 82, 0.3);
+  background: #eee5d4;
+}
+
+.bardo-mail-card.is-outgoing {
+  border-color: rgba(36, 107, 88, 0.45);
+  background: #e4eee6;
+}
+
+.bardo-mail-card.is-pending {
+  color: #6d626f;
+  background: rgba(214, 173, 242, 0.12);
+}
+
+.bardo-mail-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(74, 51, 82, 0.18);
+}
+
+.bardo-mail-card > header span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #624b6c;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.bardo-mail-card.is-outgoing > header span { color: #246b58; }
+.bardo-mail-card > header svg { width: 16px; height: 16px; }
+.bardo-mail-card > header time { color: #786b7a; font-size: 0.68rem; text-align: right; }
+.bardo-mail-card > strong { display: block; margin-top: 14px; overflow-wrap: anywhere; }
+.bardo-mail-card > p { margin: 9px 0 0; color: #4f4352; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.bardo-mail-card > dl {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 0;
+}
+
+.bardo-mail-card > dl div {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 8px;
+}
+
+.bardo-mail-card dt { color: #786b7a; font-size: 0.68rem; }
+.bardo-mail-card dd { margin: 0; font-size: 0.74rem; font-weight: 700; overflow-wrap: anywhere; }
 
 /* Einstein dashboard */
 .dashboard-modal[data-dashboard='bucle'] {
@@ -2907,6 +2995,7 @@ footer span:last-child {
   .bardo-history-layout { height: auto; }
   .bardo-conversation-index ul { max-height: 330px; }
   .bardo-conversation-detail { overflow: visible; }
+  .bardo-mail-pair { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 520px) {
@@ -6114,6 +6203,14 @@ footer span:last-child {
     overflow-y: auto;
     overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .dashboard-body.bardo-control-room {
+    min-height: 0;
+  }
+
+  .bardo-history-panel {
+    min-height: calc(100% - 58px);
   }
 
   .prospecto-control-room,

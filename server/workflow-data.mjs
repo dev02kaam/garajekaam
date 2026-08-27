@@ -220,6 +220,81 @@ export async function getConversations(limit) {
   }
 }
 
+export async function getConversationEmail(emailId) {
+  const result = await availableQuery('email_messages', `
+    SELECT
+      incoming.email_message_id,
+      incoming.message_id,
+      incoming.subject,
+      incoming.received_at,
+      incoming.status,
+      incoming.classification,
+      incoming.classification_confidence,
+      incoming.error,
+      incoming.from_email,
+      incoming.to_email,
+      left(COALESCE(NULLIF(incoming.body_text, ''), incoming.normalized_text, ''), 12000) AS incoming_body,
+      left(regexp_replace(incoming.normalized_text, E'[\\r\\n\\t ]+', ' ', 'g'), 500) AS summary,
+      reply.item AS reply
+    FROM ${workflowSchemaSql}.email_messages incoming
+    LEFT JOIN LATERAL (
+      SELECT jsonb_build_object(
+        'id', outgoing.email_message_id,
+        'messageId', outgoing.message_id,
+        'subject', outgoing.subject,
+        'sentAt', COALESCE(outgoing.sent_at, outgoing.created_at),
+        'status', outgoing.status,
+        'fromEmail', outgoing.from_email,
+        'toEmail', outgoing.to_email,
+        'body', left(COALESCE(NULLIF(outgoing.body_text, ''), outgoing.normalized_text, ''), 12000)
+      ) AS item
+      FROM ${workflowSchemaSql}.email_messages outgoing
+      WHERE outgoing.conversation_id = incoming.conversation_id
+        AND outgoing.direction = 'outgoing'
+        AND (outgoing.parent_message_id = incoming.message_id OR outgoing.in_reply_to = incoming.message_id)
+      ORDER BY COALESCE(outgoing.sent_at, outgoing.created_at) ASC
+      LIMIT 1
+    ) reply ON true
+    WHERE incoming.email_message_id = $1
+      AND incoming.direction = 'incoming'
+    LIMIT 1
+  `, [emailId])
+
+  const row = result.rows[0]
+  if (!row) return { available: result.available, email: null }
+
+  return {
+    available: result.available,
+    email: {
+      id: String(row.email_message_id),
+      messageId: row.message_id || '',
+      subject: row.subject || '(Sin asunto)',
+      receivedAt: iso(row.received_at),
+      status: row.error && Object.keys(row.error).length
+        ? 'failed'
+        : ['received', 'processing'].includes(row.status) ? 'active' : 'completed',
+      classification: row.classification,
+      confidence: asNumber(row.classification_confidence),
+      summary: row.summary || 'Sin resumen disponible.',
+      incoming: {
+        fromEmail: row.from_email || '',
+        toEmail: row.to_email || '',
+        body: row.incoming_body || row.summary || 'Contenido no disponible.',
+      },
+      reply: row.reply ? {
+        id: String(row.reply.id),
+        messageId: row.reply.messageId || '',
+        subject: row.reply.subject || row.subject || '(Sin asunto)',
+        sentAt: iso(row.reply.sentAt),
+        status: row.reply.status || 'sent',
+        fromEmail: row.reply.fromEmail || '',
+        toEmail: row.reply.toEmail || row.from_email || '',
+        body: row.reply.body || 'Contenido no disponible.',
+      } : null,
+    },
+  }
+}
+
 export async function getFollowups(limit) {
   const result = await availableQuery('ficharia_weekly_followup_status', `
     SELECT f.*, inbox.contact_name, inbox.company, inbox.domain

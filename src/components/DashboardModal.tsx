@@ -10,6 +10,7 @@ import {
   Image as ImageIcon,
   Library,
   LoaderCircle,
+  MailOpen,
   Palette,
   RefreshCcw,
   Search,
@@ -27,6 +28,7 @@ import {
   workflowApi,
   type WorkflowCampaign,
   type WorkflowConversation,
+  type WorkflowConversationEmail,
   type WorkflowCreative,
   type WorkflowFollowupConversation,
 } from '../workflowApi'
@@ -110,6 +112,21 @@ type BardoEmailRun = {
   status: BardoEmailStatus
   completedSteps: number
   summary: string
+  incoming?: {
+    fromEmail: string
+    toEmail: string
+    body: string
+  }
+  reply?: {
+    id: string
+    messageId: string
+    subject: string
+    sentAt: string
+    status: string
+    fromEmail: string
+    toEmail: string
+    body: string
+  } | null
 }
 
 type BardoConversation = {
@@ -637,9 +654,26 @@ function ModalShell({ agent, onClose, children }: DashboardModalProps & { childr
       }
     }
     document.body.classList.add('modal-open')
+    const pageScrollY = window.scrollY
+    const previousBodyStyles = {
+      position: document.body.style.position,
+      top: document.body.style.top,
+      right: document.body.style.right,
+      left: document.body.style.left,
+      width: document.body.style.width,
+    }
+    Object.assign(document.body.style, {
+      position: 'fixed',
+      top: `-${pageScrollY}px`,
+      right: '0',
+      left: '0',
+      width: '100%',
+    })
     window.addEventListener('keydown', onKeyDown)
     return () => {
       document.body.classList.remove('modal-open')
+      Object.assign(document.body.style, previousBodyStyles)
+      window.scrollTo(0, pageScrollY)
       window.removeEventListener('keydown', onKeyDown)
       previousFocus.current?.focus()
     }
@@ -1311,6 +1345,8 @@ function BardoDashboard() {
   const [selectedEmailId, setSelectedEmailId] = useState(bardoConversations[0].emails[0].id)
   const [conversations, setConversations] = useState<BardoConversation[]>(bardoConversations)
   const [conversationDataState, setConversationDataState] = useState<WorkflowDataState>('loading')
+  const [emailDetails, setEmailDetails] = useState<Record<string, WorkflowConversationEmail>>({})
+  const [emailDetailRequest, setEmailDetailRequest] = useState<{ id: string; state: 'idle' | 'loading' | 'error' }>({ id: '', state: 'idle' })
 
   useEffect(() => {
     let active = true
@@ -1337,6 +1373,7 @@ function BardoDashboard() {
   ))
   const selectedConversation = filteredConversations.find((conversation) => conversation.id === selectedConversationId) ?? filteredConversations[0] ?? null
   const selectedEmail = selectedConversation?.emails.find((email) => email.id === selectedEmailId) ?? selectedConversation?.emails[0] ?? null
+  const selectedEmailDetail = selectedEmail ? emailDetails[selectedEmail.id] ?? null : null
   const liveConversation = conversations.find((conversation) => conversation.emails.some((email) => email.status === 'active')) ?? null
   const liveEmail = liveConversation?.emails.find((email) => email.status === 'active') ?? null
   const liveSteps: BardoWorkflowStep[] = liveEmail
@@ -1359,6 +1396,37 @@ function BardoDashboard() {
         }
       })
     : []
+  useEffect(() => {
+    const emailId = selectedEmail?.id
+    if (!emailId || conversationDataState !== 'postgres' || emailDetails[emailId]) return
+
+    let active = true
+    setEmailDetailRequest({ id: emailId, state: 'loading' })
+    workflowApi.conversationEmail(emailId)
+      .then((result) => {
+        if (!active) return
+        if (result.email) setEmailDetails((current) => ({ ...current, [emailId]: result.email as WorkflowConversationEmail }))
+        setEmailDetailRequest({ id: emailId, state: result.email ? 'idle' : 'error' })
+      })
+      .catch(() => active && setEmailDetailRequest({ id: emailId, state: 'error' }))
+    return () => { active = false }
+  }, [conversationDataState, emailDetails, selectedEmail?.id])
+
+  const selectedIncoming = selectedEmail && selectedConversation ? {
+    fromEmail: selectedEmailDetail?.incoming.fromEmail || selectedEmail.incoming?.fromEmail || selectedConversation.email,
+    toEmail: selectedEmailDetail?.incoming.toEmail || selectedEmail.incoming?.toEmail || 'contacto@ficharia.com',
+    body: selectedEmailDetail?.incoming.body || selectedEmail.incoming?.body || selectedEmail.summary,
+  } : null
+  const selectedReply = selectedEmailDetail?.reply ? {
+    ...selectedEmailDetail.reply,
+    sentAt: formatDateTime(selectedEmailDetail.reply.sentAt),
+  } : selectedEmail?.reply ?? null
+  const selectedDetailLoading = selectedEmail
+    && emailDetailRequest.id === selectedEmail.id
+    && emailDetailRequest.state === 'loading'
+  const selectedDetailFailed = selectedEmail
+    && emailDetailRequest.id === selectedEmail.id
+    && emailDetailRequest.state === 'error'
 
   const emailStatusLabels: Record<BardoEmailStatus, string> = {
     completed: 'Respondido',
@@ -1520,6 +1588,57 @@ function BardoDashboard() {
                     <div><dt>Duración</dt><dd>{selectedEmail.duration}</dd></div>
                     <div><dt>ID</dt><dd>{selectedEmail.id}</dd></div>
                   </dl>
+                  {selectedIncoming && (
+                    <section className="bardo-mail-exchange" aria-labelledby="bardo-mail-exchange-title">
+                      <header>
+                        <div>
+                          <h4 id="bardo-mail-exchange-title">Intercambio</h4>
+                          <p>El mensaje que entró y la respuesta que dejó El Bardo.</p>
+                        </div>
+                      </header>
+                      <div className="bardo-mail-pair">
+                        <article className="bardo-mail-card is-incoming">
+                          <header>
+                            <span><MailOpen aria-hidden="true" /> Recibido</span>
+                            <time>{selectedEmail.receivedAt}</time>
+                          </header>
+                          <dl>
+                            <div><dt>De</dt><dd>{selectedIncoming.fromEmail}</dd></div>
+                            <div><dt>Para</dt><dd>{selectedIncoming.toEmail}</dd></div>
+                          </dl>
+                          <strong>{selectedEmail.subject}</strong>
+                          <p>{selectedIncoming.body}</p>
+                        </article>
+
+                        {selectedReply ? (
+                          <article className="bardo-mail-card is-outgoing">
+                            <header>
+                              <span><Send aria-hidden="true" /> Enviado</span>
+                              <time>{selectedReply.sentAt}</time>
+                            </header>
+                            <dl>
+                              <div><dt>De</dt><dd>{selectedReply.fromEmail}</dd></div>
+                              <div><dt>Para</dt><dd>{selectedReply.toEmail}</dd></div>
+                            </dl>
+                            <strong>{selectedReply.subject}</strong>
+                            <p>{selectedReply.body}</p>
+                          </article>
+                        ) : (
+                          <article className="bardo-mail-card is-pending" role="status">
+                            <header><span><Send aria-hidden="true" /> Respuesta</span></header>
+                            <strong>{selectedDetailLoading ? 'Cargando intercambio' : selectedDetailFailed ? 'No se pudo cargar' : selectedEmail.status === 'active' ? 'En preparación' : 'Sin envío registrado'}</strong>
+                            <p>{selectedDetailLoading
+                              ? 'Consultando en PostgreSQL el mensaje saliente enlazado.'
+                              : selectedDetailFailed
+                                ? 'No se ha podido consultar este mensaje. Selecciona otro correo y vuelve a intentarlo.'
+                                : selectedEmail.status === 'active'
+                              ? 'La respuesta aparecerá aquí cuando El Bardo termine de redactarla y la registre en PostgreSQL.'
+                              : 'No consta una respuesta saliente enlazada a este correo.'}</p>
+                          </article>
+                        )}
+                      </div>
+                    </section>
+                  )}
                   <BardoWorkflowProgress steps={selectedSteps} label={`Recorrido de ${selectedEmail.subject}`} />
                 </section>
               </article>

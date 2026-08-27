@@ -28,6 +28,32 @@ export type WorkflowCampaign = {
   }>
 }
 
+export type WorkflowConversationEmail = {
+  id: string
+  messageId: string
+  subject: string
+  receivedAt: string | null
+  status: 'completed' | 'failed' | 'active'
+  classification: string | null
+  confidence: number | null
+  summary: string
+  incoming: {
+    fromEmail: string
+    toEmail: string
+    body: string
+  }
+  reply: {
+    id: string
+    messageId: string
+    subject: string
+    sentAt: string | null
+    status: string
+    fromEmail: string
+    toEmail: string
+    body: string
+  } | null
+}
+
 export type WorkflowConversation = {
   id: string
   contact: string
@@ -39,16 +65,7 @@ export type WorkflowConversation = {
   lastActivity: string | null
   incomingCount: number
   outgoingCount: number
-  emails: Array<{
-    id: string
-    messageId: string
-    subject: string
-    receivedAt: string | null
-    status: 'completed' | 'failed' | 'active'
-    classification: string | null
-    confidence: number | null
-    summary: string
-  }>
+  emails: Array<Omit<WorkflowConversationEmail, 'incoming' | 'reply'>>
 }
 
 export type WorkflowFollowupConversation = {
@@ -125,6 +142,7 @@ export const workflowApi = {
   jobs: (limit = 100) => request<{ available: boolean; jobs: WorkflowJob[] }>(`/api/workflows/jobs?limit=${limit}`),
   campaigns: (limit = 100) => request<{ available: boolean; campaigns: WorkflowCampaign[] }>(`/api/workflows/campaigns?limit=${limit}`),
   conversations: (limit = 100) => request<{ available: boolean; conversations: WorkflowConversation[] }>(`/api/workflows/conversations?limit=${limit}`),
+  conversationEmail: (emailId: string) => request<{ available: boolean; email: WorkflowConversationEmail | null }>(`/api/workflows/conversations/emails/${encodeURIComponent(emailId)}`),
   followups: (limit = 100) => request<{ available: boolean; conversations: WorkflowFollowupConversation[] }>(`/api/workflows/followups?limit=${limit}`),
   creatives: (limit = 100) => request<{ available: boolean; assets: WorkflowCreative[] }>(`/api/workflows/creatives?limit=${limit}`),
   launchCampaign: (form: FormData, csrfToken: string) => request<Record<string, unknown>>('/api/workflows/campaigns/launch', {

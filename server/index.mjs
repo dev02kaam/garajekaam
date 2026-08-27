@@ -21,6 +21,7 @@ import {
 import { hashPassword, verifyPassword } from './security.mjs'
 import {
   getCampaigns,
+  getConversationEmail,
   getConversations,
   getCreatives,
   getFollowups,
@@ -393,6 +394,16 @@ function dashboardRoute(loader) {
 app.get('/api/workflows/jobs', requireAuthentication, dashboardRoute(getJobs))
 app.get('/api/workflows/campaigns', requireAuthentication, dashboardRoute(getCampaigns))
 app.get('/api/workflows/conversations', requireAuthentication, dashboardRoute(getConversations))
+app.get('/api/workflows/conversations/emails/:emailId', requireAuthentication, async (req, res) => {
+  const emailId = parse(idSchema, req.params.emailId, res)
+  if (!emailId) return
+  res.set('Cache-Control', 'private, no-store')
+  const result = await getConversationEmail(emailId)
+  if (result.available && !result.email) {
+    return res.status(404).json({ code: 'EMAIL_NOT_FOUND', message: 'No se encontró el correo solicitado.' })
+  }
+  res.json(result)
+})
 app.get('/api/workflows/followups', requireAuthentication, dashboardRoute(getFollowups))
 app.get('/api/workflows/creatives', requireAuthentication, dashboardRoute(getCreatives))
 app.get('/api/workflows/config', requireAuthentication, (_req, res) => {
