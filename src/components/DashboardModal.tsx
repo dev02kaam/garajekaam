@@ -27,6 +27,7 @@ import marketingWinery from '../assets/marketing-winery-followup.webp'
 import {
   workflowApi,
   type WorkflowCampaign,
+  type WorkflowCampaignContact,
   type WorkflowConversation,
   type WorkflowConversationEmail,
   type WorkflowCreative,
@@ -76,7 +77,12 @@ type CampaignHistoryItem = {
   csvRows: number | null
   csvValid: number | null
   prompt: string
-  status: 'completed' | 'running' | 'failed' | 'pending-data'
+  status: WorkflowCampaign['status']
+  workflowStatus: string | null
+  updatedAt: string | null
+  completedAt: string | null
+  lastError: WorkflowCampaign['lastError']
+  execution: WorkflowCampaign['execution'] | null
   selectedCompanies: number | null
   companiesContacted: number | null
   replies: number | null
@@ -85,6 +91,9 @@ type CampaignHistoryItem = {
   deliveryIssues: CampaignDeliveryIssue[]
   source: 'demo' | 'local' | 'database'
 }
+
+type CampaignContactFilter = 'all' | 'sent' | 'pending' | 'issues' | 'not-selected'
+type CampaignContactDataState = 'idle' | 'loading' | 'ready' | 'error'
 
 type WorkflowRun = {
   state: 'idle' | 'sending' | 'accepted' | 'completed' | 'failed'
@@ -186,6 +195,11 @@ const demoCampaigns: CampaignHistoryItem[] = [
     csvValid: 11842,
     prompt: 'Para empresas del sector agrícola, envía el lunes y el martes entre las 09:00 y las 13:00. Para bodegas, reparte los envíos entre miércoles, jueves y viernes en la misma franja. Selecciona solo responsables comerciales y evita duplicados.',
     status: 'completed',
+    workflowStatus: 'completed',
+    updatedAt: '2026-08-21T13:00:00',
+    completedAt: '2026-08-21T13:00:00',
+    lastError: null,
+    execution: null,
     selectedCompanies: 612,
     companiesContacted: 604,
     replies: 82,
@@ -218,6 +232,11 @@ const demoCampaigns: CampaignHistoryItem[] = [
     csvValid: 11842,
     prompt: 'Selecciona estudios creativos de menos de 30 personas. Envía la primera mitad el jueves por la mañana y el resto el viernes. Explica cómo pueden automatizar el seguimiento comercial sin perder su tono personal.',
     status: 'completed',
+    workflowStatus: 'completed',
+    updatedAt: '2026-08-15T12:30:00',
+    completedAt: '2026-08-15T12:30:00',
+    lastError: null,
+    execution: null,
     selectedCompanies: 51,
     companiesContacted: 51,
     replies: 12,
@@ -238,6 +257,11 @@ const demoCampaigns: CampaignHistoryItem[] = [
     csvValid: 11842,
     prompt: 'Filtra comercios minoristas de la zona centro y reparte los envíos durante tres mañanas. Presenta una forma sencilla de reducir tareas manuales, evita tecnicismos y pregunta qué proceso les hace perder más tiempo.',
     status: 'completed',
+    workflowStatus: 'completed',
+    updatedAt: '2026-08-08T13:00:00',
+    completedAt: '2026-08-08T13:00:00',
+    lastError: null,
+    execution: null,
     selectedCompanies: 93,
     companiesContacted: 87,
     replies: 8,
@@ -384,6 +408,11 @@ function mapCampaign(campaign: WorkflowCampaign): CampaignHistoryItem {
     csvValid: campaign.csvValid,
     prompt: campaign.prompt,
     status: campaign.status,
+    workflowStatus: campaign.workflowStatus,
+    updatedAt: campaign.updatedAt,
+    completedAt: campaign.completedAt,
+    lastError: campaign.lastError,
+    execution: campaign.execution,
     selectedCompanies: campaign.selectedCompanies,
     companiesContacted: campaign.companiesContacted,
     replies: campaign.replies,
@@ -731,6 +760,12 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
   const [databaseCampaigns, setDatabaseCampaigns] = useState<CampaignHistoryItem[]>([])
   const [campaignDataState, setCampaignDataState] = useState<WorkflowDataState>('loading')
   const [campaignWebhookReady, setCampaignWebhookReady] = useState(false)
+  const [campaignContacts, setCampaignContacts] = useState<WorkflowCampaignContact[]>([])
+  const [campaignContactsTotal, setCampaignContactsTotal] = useState(0)
+  const [campaignContactState, setCampaignContactState] = useState<CampaignContactDataState>('idle')
+  const [campaignContactQuery, setCampaignContactQuery] = useState('')
+  const [campaignContactFilter, setCampaignContactFilter] = useState<CampaignContactFilter>('all')
+  const [campaignContactPage, setCampaignContactPage] = useState(0)
   const [run, setRun] = useState<WorkflowRun>({
     state: 'idle',
     message: 'Comprobando la conexión con n8n…',
@@ -742,13 +777,9 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
 
   useEffect(() => {
     let active = true
-    Promise.all([workflowApi.campaigns(200), workflowApi.config()])
-      .then(([result, config]) => {
+    workflowApi.config()
+      .then((config) => {
         if (!active) return
-        const mapped = result.campaigns.map(mapCampaign)
-        setDatabaseCampaigns(mapped)
-        setCampaignDataState(result.available ? 'postgres' : 'unavailable')
-        if (mapped[0]) setSelectedCampaignId(mapped[0].id)
         setCampaignWebhookReady(config.campaignWebhookConfigured)
         setRun((current) => current.state === 'idle' ? {
           ...current,
@@ -759,10 +790,50 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
       })
       .catch(() => {
         if (!active) return
-        setCampaignDataState('error')
         setRun((current) => current.state === 'idle' ? { ...current, message: 'No se pudo comprobar la conexión con n8n.' } : current)
       })
     return () => { active = false }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    let refreshing = false
+
+    const loadCampaigns = async () => {
+      if (refreshing) return
+      refreshing = true
+      try {
+        const result = await workflowApi.campaigns(200)
+        if (!active) return
+        const mapped = result.campaigns.map(mapCampaign)
+        setDatabaseCampaigns(mapped)
+        setCampaignDataState(result.available ? 'postgres' : 'unavailable')
+        if (mapped[0]) {
+          setSelectedCampaignId((current) => (
+            mapped.some((campaign) => campaign.id === current) ? current : mapped[0].id
+          ))
+        }
+      } catch {
+        if (active) setCampaignDataState('error')
+      } finally {
+        refreshing = false
+      }
+    }
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void loadCampaigns()
+    }
+
+    void loadCampaigns()
+    const timer = window.setInterval(refreshWhenVisible, 15_000)
+    window.addEventListener('focus', refreshWhenVisible)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    return () => {
+      active = false
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refreshWhenVisible)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+    }
   }, [])
 
   const readCsv = (file?: File) => {
@@ -917,6 +988,11 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
     csvValid: item.csvValid ?? null,
     prompt: item.prompt,
     status: item.status === 'pending' ? 'running' : item.status === 'failed' ? 'failed' : 'pending-data',
+    workflowStatus: null,
+    updatedAt: item.createdAt,
+    completedAt: null,
+    lastError: null,
+    execution: null,
     selectedCompanies: null,
     companiesContacted: null,
     replies: null,
@@ -925,25 +1001,105 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
     deliveryIssues: [],
     source: 'local',
   }))
+  const unresolvedLocalCampaigns = localCampaigns.filter((localCampaign) => !databaseCampaigns.some((databaseCampaign) => {
+    const sameFile = localCampaign.filename.trim().toLocaleLowerCase('es') === databaseCampaign.filename.trim().toLocaleLowerCase('es')
+    const samePrompt = localCampaign.prompt.trim() === databaseCampaign.prompt.trim()
+    const launchDistance = Math.abs(new Date(localCampaign.createdAt).getTime() - new Date(databaseCampaign.createdAt).getTime())
+    return sameFile && samePrompt && launchDistance <= 30 * 60_000
+  }))
   const campaigns = [
-    ...localCampaigns,
+    ...unresolvedLocalCampaigns,
     ...(campaignDataState === 'postgres' ? databaseCampaigns : demoCampaigns),
   ]
   const normalizedCampaignQuery = campaignQuery.trim().toLocaleLowerCase('es')
   const filteredCampaigns = campaigns.filter((campaign) => (
-    `${campaign.title} ${campaign.filename} ${campaign.prompt} ${campaign.id} ${formatMoment(campaign.createdAt)} ${campaign.deliveryIssues.map((issue) => `${issue.company} ${issue.email} ${issue.segment} ${issue.reason}`).join(' ')}`
+    `${campaign.title} ${campaign.filename} ${campaign.prompt} ${campaign.id} ${campaign.workflowStatus ?? ''} ${campaign.lastError?.code ?? ''} ${campaign.lastError?.message ?? ''} ${formatMoment(campaign.createdAt)} ${campaign.deliveryIssues.map((issue) => `${issue.company} ${issue.email} ${issue.segment} ${issue.reason}`).join(' ')}`
       .toLocaleLowerCase('es')
       .includes(normalizedCampaignQuery)
   ))
   const selectedCampaign = filteredCampaigns.find((campaign) => campaign.id === selectedCampaignId)
     ?? filteredCampaigns[0]
     ?? null
+  const selectedCampaignDatabaseId = selectedCampaign?.source === 'database' ? selectedCampaign.id : null
+
+  useEffect(() => {
+    setCampaignContactPage(0)
+  }, [selectedCampaignDatabaseId])
+
+  useEffect(() => {
+    let active = true
+    if (activeTab !== 'history' || !selectedCampaignDatabaseId) {
+      setCampaignContacts([])
+      setCampaignContactsTotal(0)
+      setCampaignContactState('idle')
+      return () => { active = false }
+    }
+
+    setCampaignContactState('loading')
+    const timer = window.setTimeout(() => {
+      workflowApi.campaignContacts(selectedCampaignDatabaseId, {
+        limit: 50,
+        offset: campaignContactPage * 50,
+        query: campaignContactQuery.trim(),
+        status: campaignContactFilter,
+      })
+        .then((result) => {
+          if (!active) return
+          setCampaignContacts(result.contacts)
+          setCampaignContactsTotal(result.total)
+          setCampaignContactState('ready')
+        })
+        .catch(() => {
+          if (!active) return
+          setCampaignContacts([])
+          setCampaignContactsTotal(0)
+          setCampaignContactState('error')
+        })
+    }, 250)
+
+    return () => {
+      active = false
+      window.clearTimeout(timer)
+    }
+  }, [activeTab, campaignContactFilter, campaignContactPage, campaignContactQuery, selectedCampaignDatabaseId])
 
   const campaignStatusLabels: Record<CampaignHistoryItem['status'], string> = {
     completed: 'Finalizada',
+    partial: 'Finalizada con incidencias',
     running: 'En curso',
+    'needs-review': 'Requiere revisión',
+    cancelled: 'Cancelada',
+    queued: 'En cola',
+    paused: 'Pausada',
     failed: 'Incidencia',
     'pending-data': 'Pendiente de n8n',
+  }
+
+  const campaignContactStatusLabels: Record<string, string> = {
+    pending_segmentation: 'Pendiente de segmentar',
+    segmenting: 'Segmentando',
+    not_selected: 'No seleccionada',
+    scheduled: 'Programada',
+    sending: 'Enviando',
+    sent: 'Enviado',
+    suppressed: 'Excluida',
+    capacity_exhausted: 'Sin capacidad',
+    delivery_unknown: 'Entrega sin confirmar',
+    failed: 'Fallido',
+  }
+  const selectedExecution = selectedCampaign?.execution
+  const selectedIssueCount = selectedExecution
+    ? selectedExecution.suppressed + selectedExecution.capacityExhausted + selectedExecution.deliveryUnknown + selectedExecution.failed
+    : selectedCampaign?.deliveryIssues.length ?? 0
+  const selectedPendingCount = selectedExecution
+    ? selectedExecution.pendingSegmentation + selectedExecution.segmenting + selectedExecution.scheduled + selectedExecution.sending
+    : 0
+  const campaignContactFilterCounts: Record<CampaignContactFilter, number | null> = {
+    all: selectedCampaign?.csvValid ?? null,
+    sent: selectedExecution?.sent ?? selectedCampaign?.companiesContacted ?? null,
+    pending: selectedExecution ? selectedPendingCount : null,
+    issues: selectedExecution ? selectedIssueCount : selectedCampaign?.deliveryIssues.length ?? null,
+    'not-selected': selectedExecution?.notSelected ?? null,
   }
 
   const campaignRate = (value: number | null, total: number | null) => (
@@ -1121,7 +1277,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
           <header className="campaign-history-heading">
             <div>
               <h3>Historial de campañas</h3>
-              <p>Consulta qué parte del CSV seleccionó la instrucción, cuándo se contactó y qué respuesta obtuvo.</p>
+              <p>Consulta cómo terminó cada campaña, qué se envió y qué contactos quedaron pendientes o con incidencia.</p>
             </div>
           </header>
 
@@ -1132,7 +1288,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
               type="search"
               value={campaignQuery}
               onChange={(event) => setCampaignQuery(event.target.value)}
-              placeholder="Buscar campaña, CSV, empresa o incidencia"
+              placeholder="Buscar campaña, CSV, estado o incidencia"
             />
           </label>
 
@@ -1150,7 +1306,12 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
                         type="button"
                         className={selectedCampaign?.id === campaign.id ? 'is-selected' : ''}
                         aria-pressed={selectedCampaign?.id === campaign.id}
-                        onClick={() => setSelectedCampaignId(campaign.id)}
+                        onClick={() => {
+                          setSelectedCampaignId(campaign.id)
+                          setCampaignContactQuery('')
+                          setCampaignContactFilter('all')
+                          setCampaignContactPage(0)
+                        }}
                       >
                         <span className="campaign-index-copy">
                           <strong>{campaign.title}</strong>
@@ -1187,6 +1348,39 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
                     <span className="campaign-status-label" data-status={selectedCampaign.status}>{campaignStatusLabels[selectedCampaign.status]}</span>
                   </div>
                 </header>
+
+                {selectedCampaign.source === 'database' && (
+                  <section className="campaign-execution-summary" data-status={selectedCampaign.status} aria-label="Estado de ejecución de la campaña">
+                    <div className="campaign-execution-state">
+                      {selectedCampaign.status === 'completed'
+                        ? <Check aria-hidden="true" />
+                        : ['partial', 'needs-review', 'failed', 'cancelled'].includes(selectedCampaign.status)
+                          ? <AlertTriangle aria-hidden="true" />
+                          : <LoaderCircle aria-hidden="true" />}
+                      <span>
+                        <small>Resultado del workflow</small>
+                        <strong>{campaignStatusLabels[selectedCampaign.status]}</strong>
+                        <time dateTime={selectedCampaign.completedAt ?? selectedCampaign.updatedAt ?? selectedCampaign.createdAt}>
+                          {selectedCampaign.completedAt
+                            ? `Terminó ${formatDateTime(selectedCampaign.completedAt)}`
+                            : `Actualizado ${formatDateTime(selectedCampaign.updatedAt, 'sin actualización registrada')}`}
+                        </time>
+                      </span>
+                    </div>
+                    <dl>
+                      <div><dt>Enviados</dt><dd>{formatCampaignCount(selectedExecution?.sent ?? selectedCampaign.companiesContacted)}</dd></div>
+                      <div><dt>Pendientes</dt><dd>{formatCampaignCount(selectedExecution ? selectedPendingCount : null)}</dd></div>
+                      <div><dt>Incidencias</dt><dd>{formatCampaignCount(selectedExecution ? selectedIssueCount : selectedCampaign.deliveryIssues.length)}</dd></div>
+                      <div><dt>No seleccionadas</dt><dd>{formatCampaignCount(selectedExecution?.notSelected ?? null)}</dd></div>
+                    </dl>
+                    {selectedCampaign.lastError && (
+                      <div className="campaign-execution-error" role="status">
+                        <strong>{selectedCampaign.lastError.code || 'Incidencia registrada'}</strong>
+                        <span>{selectedCampaign.lastError.message || 'n8n marcó esta campaña para revisión.'}</span>
+                      </div>
+                    )}
+                  </section>
+                )}
 
                 <div className="campaign-performance" aria-label="Resultados de la campaña">
                   <div>
@@ -1250,6 +1444,144 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
                       {selectedCampaign.source === 'demo' && <small className="campaign-issues-note">{workflowDataLabel(campaignDataState)} · se muestra una campaña de ejemplo hasta desplegar el módulo.</small>}
                     </div>
                   </details>
+                )}
+
+                {selectedCampaign.source === 'database' && (
+                  <section className="campaign-contact-ledger" aria-labelledby="campaign-contacts-title">
+                    <header>
+                      <div>
+                        <h5 id="campaign-contacts-title">Destinatarios y correos</h5>
+                        <p>Comprueba quién recibió el correo, quién quedó pendiente y el motivo de cada incidencia.</p>
+                      </div>
+                      <strong>{campaignContactsTotal} resultados</strong>
+                    </header>
+
+                    <div className="campaign-contact-tools">
+                      <label>
+                        <Search aria-hidden="true" />
+                        <span className="sr-only">Buscar dentro de esta campaña</span>
+                        <input
+                          type="search"
+                          value={campaignContactQuery}
+                          onChange={(event) => {
+                            setCampaignContactQuery(event.target.value)
+                            setCampaignContactPage(0)
+                          }}
+                          placeholder="Empresa, correo, asunto o error"
+                        />
+                      </label>
+                      <div className="campaign-contact-filters" aria-label="Filtrar destinatarios">
+                        {([
+                          ['all', 'Todos'],
+                          ['sent', 'Enviados'],
+                          ['pending', 'Pendientes'],
+                          ['issues', 'Incidencias'],
+                          ['not-selected', 'No seleccionados'],
+                        ] as Array<[CampaignContactFilter, string]>).map(([value, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            className={campaignContactFilter === value ? 'is-active' : ''}
+                            aria-pressed={campaignContactFilter === value}
+                            onClick={() => {
+                              setCampaignContactFilter(value)
+                              setCampaignContactPage(0)
+                            }}
+                          >
+                            {label}
+                            {campaignContactFilterCounts[value] !== null && <span>{campaignContactFilterCounts[value]}</span>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {campaignContactState === 'loading' && (
+                      <div className="campaign-contact-message"><LoaderCircle aria-hidden="true" /> Consultando PostgreSQL…</div>
+                    )}
+                    {campaignContactState === 'error' && (
+                      <div className="campaign-contact-message is-error"><AlertTriangle aria-hidden="true" /> No se pudo cargar el detalle de los destinatarios.</div>
+                    )}
+                    {campaignContactState === 'ready' && campaignContacts.length === 0 && (
+                      <div className="campaign-contact-message">No hay contactos que coincidan con este filtro.</div>
+                    )}
+
+                    {campaignContacts.length > 0 && (
+                      <div className="campaign-contact-list">
+                        {campaignContacts.map((contact) => {
+                          const contactMoment = contact.sentAt ?? contact.attemptedAt ?? contact.scheduledAt ?? contact.nextAttemptAt
+                          const contactStatusLabel = campaignContactStatusLabels[contact.status] || contact.status
+                          return (
+                            <details key={contact.id} className="campaign-contact-item" data-status={contact.status}>
+                              <summary>
+                                <span className="campaign-contact-person">
+                                  <strong>{contact.company}</strong>
+                                  <small>{contact.email}</small>
+                                </span>
+                                <span className="campaign-contact-subject">
+                                  <strong>{contact.emailContent?.subject || contact.matchReason || 'Sin correo generado'}</strong>
+                                  <small>{contact.segment || 'Sin segmento'}</small>
+                                </span>
+                                <span className="campaign-contact-result" data-status={contact.status}>{contactStatusLabel}</span>
+                                <time dateTime={contactMoment ?? undefined}>{formatDateTime(contactMoment, 'Sin fecha')}</time>
+                                <ArrowRight aria-hidden="true" />
+                              </summary>
+                              <div className="campaign-contact-detail">
+                                <dl>
+                                  <div><dt>Intentos</dt><dd>{contact.sendAttemptCount}</dd></div>
+                                  <div><dt>Programado</dt><dd>{formatDateTime(contact.scheduledAt, 'No programado')}</dd></div>
+                                  <div><dt>Enviado</dt><dd>{formatDateTime(contact.sentAt, 'No enviado')}</dd></div>
+                                  <div><dt>ID proveedor</dt><dd>{contact.providerMessageId || 'No disponible'}</dd></div>
+                                </dl>
+
+                                {contact.error && (
+                                  <div className="campaign-contact-error">
+                                    <AlertTriangle aria-hidden="true" />
+                                    <span><strong>{contact.error.code || 'Incidencia'}</strong>{contact.error.message || 'El workflow no registró más detalle.'}</span>
+                                  </div>
+                                )}
+
+                                {contact.emailContent ? (
+                                  <article className="campaign-email-preview">
+                                    <header>
+                                      <span>{contact.status === 'sent' ? 'Correo enviado' : 'Correo preparado'}</span>
+                                      <strong>{contact.emailContent.subject}</strong>
+                                      <small>Para: {contact.email}</small>
+                                    </header>
+                                    <div>
+                                      {contact.emailContent.opening && <p>{contact.emailContent.opening}</p>}
+                                      {contact.emailContent.cta && <p className="campaign-email-cta">{contact.emailContent.cta}</p>}
+                                    </div>
+                                  </article>
+                                ) : (
+                                  <p className="campaign-email-empty">No se llegó a generar contenido para este contacto.</p>
+                                )}
+
+                                {contact.reply && (
+                                  <div className="campaign-contact-reply">
+                                    <MailOpen aria-hidden="true" />
+                                    <span>
+                                      <strong>Respondió: {contact.reply.subject}</strong>
+                                      <small>{formatDateTime(contact.reply.receivedAt)}{contact.reply.classification ? ` · ${contact.reply.classification}` : ''}</small>
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </details>
+                          )
+                        })}
+                      </div>
+                    )}
+
+                    {campaignContactsTotal > 50 && (
+                      <footer className="campaign-contact-pagination">
+                        <span>Página {campaignContactPage + 1} de {Math.ceil(campaignContactsTotal / 50)}</span>
+                        <div>
+                          <button type="button" disabled={campaignContactPage === 0} onClick={() => setCampaignContactPage((page) => Math.max(page - 1, 0))}>Anterior</button>
+                          <button type="button" disabled={(campaignContactPage + 1) * 50 >= campaignContactsTotal} onClick={() => setCampaignContactPage((page) => page + 1)}>Siguiente</button>
+                        </div>
+                      </footer>
+                    )}
+                  </section>
                 )}
 
                 <div className="campaign-detail-lower">
@@ -1345,25 +1677,72 @@ function BardoDashboard() {
   const [selectedEmailId, setSelectedEmailId] = useState(bardoConversations[0].emails[0].id)
   const [conversations, setConversations] = useState<BardoConversation[]>(bardoConversations)
   const [conversationDataState, setConversationDataState] = useState<WorkflowDataState>('loading')
+  const [conversationRefreshVersion, setConversationRefreshVersion] = useState(0)
   const [emailDetails, setEmailDetails] = useState<Record<string, WorkflowConversationEmail>>({})
   const [emailDetailRequest, setEmailDetailRequest] = useState<{ id: string; state: 'idle' | 'loading' | 'error' }>({ id: '', state: 'idle' })
+  const hasLoadedConversationData = useRef(false)
+  const loadedEmailDetails = useRef(new Set<string>())
 
   useEffect(() => {
     let active = true
-    workflowApi.conversations(200)
-      .then((result) => {
+    let requestInFlight = false
+
+    const refreshConversations = async () => {
+      if (requestInFlight) return
+      requestInFlight = true
+      try {
+        const result = await workflowApi.conversations(200)
         if (!active) return
         const mapped = result.conversations.map(mapBardoConversation)
         setConversationDataState(result.available ? 'postgres' : 'unavailable')
-        if (result.available) setConversations(mapped)
-        if (mapped[0]) {
-          setSelectedConversationId(mapped[0].id)
-          setSelectedEmailId(mapped[0].emails[0]?.id ?? '')
+        if (result.available) {
+          hasLoadedConversationData.current = true
+          setConversations(mapped)
+          setConversationRefreshVersion((version) => version + 1)
         }
-      })
-      .catch(() => active && setConversationDataState('error'))
-    return () => { active = false }
+      } catch {
+        if (active && !hasLoadedConversationData.current) setConversationDataState('error')
+      } finally {
+        requestInFlight = false
+      }
+    }
+
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void refreshConversations()
+    }
+
+    void refreshConversations()
+    const refreshInterval = window.setInterval(() => void refreshConversations(), 15_000)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    window.addEventListener('focus', refreshWhenVisible)
+
+    return () => {
+      active = false
+      window.clearInterval(refreshInterval)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+      window.removeEventListener('focus', refreshWhenVisible)
+    }
   }, [])
+
+  useEffect(() => {
+    if (conversationDataState !== 'postgres') return
+    const selectedConversation = conversations.find((conversation) => conversation.id === selectedConversationId)
+      ?? conversations[0]
+      ?? null
+
+    if (!selectedConversation) {
+      if (selectedConversationId) setSelectedConversationId('')
+      if (selectedEmailId) setSelectedEmailId('')
+      return
+    }
+
+    if (selectedConversation.id !== selectedConversationId) {
+      setSelectedConversationId(selectedConversation.id)
+    }
+    if (!selectedConversation.emails.some((email) => email.id === selectedEmailId)) {
+      setSelectedEmailId(selectedConversation.emails[0]?.id ?? '')
+    }
+  }, [conversationDataState, conversations, selectedConversationId, selectedEmailId])
 
   const normalizedQuery = query.trim().toLocaleLowerCase('es')
   const filteredConversations = conversations.filter((conversation) => (
@@ -1398,19 +1777,24 @@ function BardoDashboard() {
     : []
   useEffect(() => {
     const emailId = selectedEmail?.id
-    if (!emailId || conversationDataState !== 'postgres' || emailDetails[emailId]) return
+    if (!emailId || conversationDataState !== 'postgres') return
 
     let active = true
-    setEmailDetailRequest({ id: emailId, state: 'loading' })
+    if (!loadedEmailDetails.current.has(emailId)) {
+      setEmailDetailRequest({ id: emailId, state: 'loading' })
+    }
     workflowApi.conversationEmail(emailId)
       .then((result) => {
         if (!active) return
-        if (result.email) setEmailDetails((current) => ({ ...current, [emailId]: result.email as WorkflowConversationEmail }))
+        if (result.email) {
+          loadedEmailDetails.current.add(emailId)
+          setEmailDetails((current) => ({ ...current, [emailId]: result.email as WorkflowConversationEmail }))
+        }
         setEmailDetailRequest({ id: emailId, state: result.email ? 'idle' : 'error' })
       })
       .catch(() => active && setEmailDetailRequest({ id: emailId, state: 'error' }))
     return () => { active = false }
-  }, [conversationDataState, emailDetails, selectedEmail?.id])
+  }, [conversationDataState, conversationRefreshVersion, selectedEmail?.id])
 
   const selectedIncoming = selectedEmail && selectedConversation ? {
     fromEmail: selectedEmailDetail?.incoming.fromEmail || selectedEmail.incoming?.fromEmail || selectedConversation.email,

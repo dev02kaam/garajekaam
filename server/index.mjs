@@ -21,6 +21,7 @@ import {
 import { hashPassword, verifyPassword } from './security.mjs'
 import {
   getCampaigns,
+  getCampaignContacts,
   getConversationEmail,
   getConversations,
   getCreatives,
@@ -186,6 +187,12 @@ const updateUserSchema = z.object({
 const idSchema = z.string().uuid()
 const dashboardQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(100),
+}).strict()
+const campaignContactsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).max(2_000_000).default(0),
+  query: z.string().trim().max(160).default(''),
+  status: z.enum(['all', 'sent', 'pending', 'issues', 'not-selected']).default('all'),
 }).strict()
 const campaignLaunchSchema = z.object({
   prompt: z.string().trim().min(1).max(1200),
@@ -393,6 +400,14 @@ function dashboardRoute(loader) {
 
 app.get('/api/workflows/jobs', requireAuthentication, dashboardRoute(getJobs))
 app.get('/api/workflows/campaigns', requireAuthentication, dashboardRoute(getCampaigns))
+app.get('/api/workflows/campaigns/:campaignId/contacts', requireAuthentication, async (req, res) => {
+  const campaignId = parse(idSchema, req.params.campaignId, res)
+  if (!campaignId) return
+  const input = parse(campaignContactsQuerySchema, req.query, res)
+  if (!input) return
+  res.set('Cache-Control', 'private, no-store')
+  res.json(await getCampaignContacts({ campaignId, ...input }))
+})
 app.get('/api/workflows/conversations', requireAuthentication, dashboardRoute(getConversations))
 app.get('/api/workflows/conversations/emails/:emailId', requireAuthentication, async (req, res) => {
   const emailId = parse(idSchema, req.params.emailId, res)

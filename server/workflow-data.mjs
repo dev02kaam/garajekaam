@@ -33,9 +33,21 @@ function iso(value) {
 
 function campaignStatus(status) {
   if (status === 'completed') return 'completed'
-  if (['completed_with_errors', 'needs_review', 'cancelled'].includes(status)) return 'failed'
-  if (['paused'].includes(status)) return 'pending-data'
+  if (status === 'completed_with_errors') return 'partial'
+  if (status === 'needs_review') return 'needs-review'
+  if (status === 'cancelled') return 'cancelled'
+  if (status === 'paused') return 'paused'
+  if (status === 'failed') return 'failed'
+  if (['received', 'queued', 'pending'].includes(status)) return 'queued'
   return 'running'
+}
+
+function errorDetail(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !Object.keys(value).length) return null
+  const code = value.code == null ? null : String(value.code)
+  const message = value.message == null ? null : String(value.message)
+  if (!code && !message) return null
+  return { code, message }
 }
 
 function issueReason(row) {
@@ -66,6 +78,7 @@ export async function getCampaigns(limit) {
       c.plan,
       c.config,
       c.status,
+      c.last_error,
       c.accepted_contacts,
       s.pending_segmentation,
       s.segmenting,
@@ -125,6 +138,36 @@ export async function getCampaigns(limit) {
     countsByCampaign.get(String(row.campaign_id)).set(`${row.segment_id}:${row.send_date}`, asNumber(row.contacted) || 0)
   }
 
+  const replies = await pool.query(`
+    SELECT
+      x.campaign_id,
+      count(DISTINCT x.contact_id)::integer AS replies,
+      count(DISTINCT x.contact_id) FILTER (
+        WHERE incoming.classification = ANY($2::text[])
+      )::integer AS interested
+    FROM ${workflowSchemaSql}.outbound_campaign_contacts x
+    JOIN ${workflowSchemaSql}.email_messages incoming
+      ON incoming.direction = 'incoming'
+      AND (
+        incoming.in_reply_to = x.provider_message_id
+        OR incoming.parent_message_id = x.provider_message_id
+      )
+    WHERE x.campaign_id = ANY($1::uuid[])
+    GROUP BY x.campaign_id
+  `, [campaignIds, [
+    'demo_request',
+    'pricing_request',
+    'general_information',
+    'feature_question',
+    'integration_question',
+    'partner_or_collaboration',
+    'conversation_reply',
+  ]])
+  const repliesByCampaign = new Map(replies.rows.map((row) => [String(row.campaign_id), {
+    replies: asNumber(row.replies) || 0,
+    interested: asNumber(row.interested) || 0,
+  }]))
+
   return {
     available: true,
     campaigns: result.rows.map((row) => {
@@ -133,22 +176,37 @@ export async function getCampaigns(limit) {
       const pending = (asNumber(row.pending_segmentation) || 0) + (asNumber(row.segmenting) || 0)
       const selected = Math.max(accepted - notSelected - pending, 0)
       const issues = Array.isArray(row.delivery_issues) ? row.delivery_issues : []
+      const responseCounts = repliesByCampaign.get(String(row.campaign_id)) || { replies: 0, interested: 0 }
       return {
         id: String(row.campaign_id),
         externalId: row.external_id,
         title: row.plan?.campaign_summary || row.external_id || row.source_filename,
         filename: row.source_filename,
         createdAt: iso(row.created_at),
+        updatedAt: iso(row.updated_at),
         completedAt: iso(row.completed_at),
         csvRows: null,
         csvValid: accepted,
         prompt: row.prompt,
         status: campaignStatus(row.status),
         workflowStatus: row.status,
+        lastError: errorDetail(row.last_error),
+        execution: {
+          pendingSegmentation: asNumber(row.pending_segmentation) || 0,
+          segmenting: asNumber(row.segmenting) || 0,
+          notSelected,
+          scheduled: asNumber(row.scheduled) || 0,
+          sending: asNumber(row.sending) || 0,
+          sent: asNumber(row.sent) || 0,
+          suppressed: asNumber(row.suppressed) || 0,
+          capacityExhausted: asNumber(row.capacity_exhausted) || 0,
+          deliveryUnknown: asNumber(row.delivery_unknown) || 0,
+          failed: asNumber(row.failed) || 0,
+        },
         selectedCompanies: selected,
         companiesContacted: asNumber(row.sent) || 0,
-        replies: null,
-        interested: null,
+        replies: responseCounts.replies,
+        interested: responseCounts.interested,
         nextScheduledAt: iso(row.next_scheduled_at),
         days: planDays(row.plan, countsByCampaign.get(String(row.campaign_id)) || new Map()),
         deliveryIssues: issues.map((issue) => ({
@@ -159,6 +217,121 @@ export async function getCampaigns(limit) {
           reason: issueReason({ status: issue.status, last_error: issue.lastError }),
           attemptedAt: iso(issue.attemptedAt),
         })),
+      }
+    }),
+  }
+}
+
+const campaignContactFilters = {
+  all: 'TRUE',
+  sent: "x.status = 'sent'",
+  pending: "x.status IN ('pending_segmentation', 'segmenting', 'scheduled', 'sending')",
+  issues: "x.status IN ('suppressed', 'capacity_exhausted', 'delivery_unknown', 'failed')",
+  'not-selected': "x.status = 'not_selected'",
+}
+
+export async function getCampaignContacts({ campaignId, limit, offset, query, status }) {
+  const statusFilter = campaignContactFilters[status] || campaignContactFilters.all
+  const result = await availableQuery('outbound_campaign_contacts', `
+    SELECT
+      x.contact_id,
+      x.email_normalized,
+      x.contact_data,
+      x.status,
+      x.segment_id,
+      x.match_score,
+      x.match_reason,
+      x.email_subject,
+      left(COALESCE(x.email_opening, ''), 8000) AS email_opening,
+      left(COALESCE(x.email_cta, ''), 4000) AS email_cta,
+      x.scheduled_at,
+      x.send_attempt_count,
+      x.next_attempt_at,
+      x.last_send_attempt_at,
+      x.provider_message_id,
+      x.last_error,
+      x.sent_at,
+      x.updated_at,
+      reply.item AS reply,
+      count(*) OVER()::integer AS total_count
+    FROM ${workflowSchemaSql}.outbound_campaign_contacts x
+    LEFT JOIN LATERAL (
+      SELECT jsonb_build_object(
+        'id', incoming.email_message_id,
+        'subject', incoming.subject,
+        'receivedAt', incoming.received_at,
+        'classification', incoming.classification,
+        'confidence', incoming.classification_confidence
+      ) AS item
+      FROM ${workflowSchemaSql}.email_messages incoming
+      WHERE incoming.direction = 'incoming'
+        AND (
+          incoming.in_reply_to = x.provider_message_id
+          OR incoming.parent_message_id = x.provider_message_id
+        )
+      ORDER BY incoming.received_at ASC NULLS LAST
+      LIMIT 1
+    ) reply ON true
+    WHERE x.campaign_id = $1
+      AND ${statusFilter}
+      AND (
+        $2 = ''
+        OR x.email_normalized ILIKE '%' || $2 || '%'
+        OR COALESCE(x.contact_data->>'company', x.contact_data->>'empresa', '') ILIKE '%' || $2 || '%'
+        OR COALESCE(x.contact_data->>'name', x.contact_data->>'nombre', x.contact_data->>'contact_name', '') ILIKE '%' || $2 || '%'
+        OR COALESCE(x.email_subject, '') ILIKE '%' || $2 || '%'
+        OR COALESCE(x.last_error->>'message', '') ILIKE '%' || $2 || '%'
+      )
+    ORDER BY
+      CASE x.status
+        WHEN 'failed' THEN 1
+        WHEN 'delivery_unknown' THEN 2
+        WHEN 'capacity_exhausted' THEN 3
+        WHEN 'suppressed' THEN 4
+        WHEN 'sending' THEN 5
+        WHEN 'scheduled' THEN 6
+        WHEN 'sent' THEN 7
+        ELSE 8
+      END,
+      COALESCE(x.sent_at, x.last_send_attempt_at, x.scheduled_at, x.updated_at) DESC
+    LIMIT $3 OFFSET $4
+  `, [campaignId, query, limit, offset])
+
+  return {
+    available: result.available,
+    total: asNumber(result.rows[0]?.total_count) || 0,
+    contacts: result.rows.map((row) => {
+      const contactData = row.contact_data && typeof row.contact_data === 'object' ? row.contact_data : {}
+      const reply = row.reply && typeof row.reply === 'object' ? row.reply : null
+      const hasEmailContent = Boolean(row.email_subject || row.email_opening || row.email_cta)
+      return {
+        id: String(row.contact_id),
+        company: contactData.company || contactData.empresa || 'Empresa sin nombre',
+        name: contactData.name || contactData.nombre || contactData.contact_name || null,
+        email: row.email_normalized,
+        segment: row.segment_id || null,
+        status: row.status,
+        matchScore: asNumber(row.match_score),
+        matchReason: row.match_reason || null,
+        scheduledAt: iso(row.scheduled_at),
+        nextAttemptAt: iso(row.next_attempt_at),
+        attemptedAt: iso(row.last_send_attempt_at),
+        sentAt: iso(row.sent_at),
+        sendAttemptCount: asNumber(row.send_attempt_count) || 0,
+        providerMessageId: row.provider_message_id || null,
+        error: errorDetail(row.last_error),
+        emailContent: hasEmailContent ? {
+          subject: row.email_subject || '(Sin asunto)',
+          opening: row.email_opening || '',
+          cta: row.email_cta || '',
+        } : null,
+        reply: reply ? {
+          id: String(reply.id),
+          subject: reply.subject || '(Sin asunto)',
+          receivedAt: iso(reply.receivedAt),
+          classification: reply.classification || null,
+          confidence: asNumber(reply.confidence),
+        } : null,
       }
     }),
   }
@@ -189,7 +362,7 @@ export async function getConversations(limit) {
         LIMIT 50
       ) m
     ) messages ON true
-    ORDER BY inbox.attention_rank, inbox.last_activity_at DESC
+    ORDER BY inbox.last_activity_at DESC NULLS LAST, inbox.attention_rank, inbox.conversation_id
     LIMIT $1
   `, [limit])
 

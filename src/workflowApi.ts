@@ -6,12 +6,26 @@ export type WorkflowCampaign = {
   title: string
   filename: string
   createdAt: string
+  updatedAt: string | null
   completedAt: string | null
   csvRows: number | null
   csvValid: number | null
   prompt: string
-  status: 'completed' | 'running' | 'failed' | 'pending-data'
+  status: 'completed' | 'partial' | 'running' | 'needs-review' | 'cancelled' | 'queued' | 'paused' | 'failed' | 'pending-data'
   workflowStatus: string
+  lastError: { code: string | null; message: string | null } | null
+  execution: {
+    pendingSegmentation: number
+    segmenting: number
+    notSelected: number
+    scheduled: number
+    sending: number
+    sent: number
+    suppressed: number
+    capacityExhausted: number
+    deliveryUnknown: number
+    failed: number
+  }
   selectedCompanies: number | null
   companiesContacted: number | null
   replies: number | null
@@ -26,6 +40,36 @@ export type WorkflowCampaign = {
     reason: string
     attemptedAt: string | null
   }>
+}
+
+export type WorkflowCampaignContact = {
+  id: string
+  company: string
+  name: string | null
+  email: string
+  segment: string | null
+  status: string
+  matchScore: number | null
+  matchReason: string | null
+  scheduledAt: string | null
+  nextAttemptAt: string | null
+  attemptedAt: string | null
+  sentAt: string | null
+  sendAttemptCount: number
+  providerMessageId: string | null
+  error: { code: string | null; message: string | null } | null
+  emailContent: {
+    subject: string
+    opening: string
+    cta: string
+  } | null
+  reply: {
+    id: string
+    subject: string
+    receivedAt: string | null
+    classification: string | null
+    confidence: number | null
+  } | null
 }
 
 export type WorkflowConversationEmail = {
@@ -141,6 +185,20 @@ export const workflowApi = {
   config: () => request<{ campaignWebhookConfigured: boolean }>('/api/workflows/config'),
   jobs: (limit = 100) => request<{ available: boolean; jobs: WorkflowJob[] }>(`/api/workflows/jobs?limit=${limit}`),
   campaigns: (limit = 100) => request<{ available: boolean; campaigns: WorkflowCampaign[] }>(`/api/workflows/campaigns?limit=${limit}`),
+  campaignContacts: (
+    campaignId: string,
+    options: { limit?: number; offset?: number; query?: string; status?: 'all' | 'sent' | 'pending' | 'issues' | 'not-selected' } = {},
+  ) => {
+    const params = new URLSearchParams({
+      limit: String(options.limit ?? 50),
+      offset: String(options.offset ?? 0),
+      query: options.query ?? '',
+      status: options.status ?? 'all',
+    })
+    return request<{ available: boolean; total: number; contacts: WorkflowCampaignContact[] }>(
+      `/api/workflows/campaigns/${encodeURIComponent(campaignId)}/contacts?${params}`,
+    )
+  },
   conversations: (limit = 100) => request<{ available: boolean; conversations: WorkflowConversation[] }>(`/api/workflows/conversations?limit=${limit}`),
   conversationEmail: (emailId: string) => request<{ available: boolean; email: WorkflowConversationEmail | null }>(`/api/workflows/conversations/emails/${encodeURIComponent(emailId)}`),
   followups: (limit = 100) => request<{ available: boolean; conversations: WorkflowFollowupConversation[] }>(`/api/workflows/followups?limit=${limit}`),
