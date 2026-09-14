@@ -117,7 +117,10 @@ export type WorkflowFollowupConversation = {
   contact: string
   company: string
   email: string
-  state: 'waiting' | 'replied' | 'closed'
+  state: 'waiting' | 'generating' | 'sending' | 'replied' | 'closed' | 'failed' | 'needs-review'
+  lastBardoMessageAt: string | null
+  responseDetectedAt: string | null
+  eligibleAt: string | null
   nextFollowUpAt: string | null
   followUpCount: number
   events: Array<{
@@ -126,6 +129,7 @@ export type WorkflowFollowupConversation = {
     status: string
     dueAt: string | null
     sentAt: string | null
+    updatedAt: string | null
     responseDetectedAt: string | null
     cancellationReason: string | null
     error: { code?: string; message?: string } | null
@@ -201,7 +205,7 @@ export const workflowApi = {
   },
   conversations: (limit = 100) => request<{ available: boolean; conversations: WorkflowConversation[] }>(`/api/workflows/conversations?limit=${limit}`),
   conversationEmail: (emailId: string) => request<{ available: boolean; email: WorkflowConversationEmail | null }>(`/api/workflows/conversations/emails/${encodeURIComponent(emailId)}`),
-  followups: (limit = 100) => request<{ available: boolean; conversations: WorkflowFollowupConversation[] }>(`/api/workflows/followups?limit=${limit}`),
+  followups: (limit = 100, signal?: AbortSignal) => request<{ available: boolean; conversations: WorkflowFollowupConversation[] }>(`/api/workflows/followups?limit=${limit}`, { signal }),
   creatives: (limit = 100) => request<{ available: boolean; assets: WorkflowCreative[] }>(`/api/workflows/creatives?limit=${limit}`),
   launchCampaign: (form: FormData, csrfToken: string) => request<Record<string, unknown>>('/api/workflows/campaigns/launch', {
     method: 'POST',

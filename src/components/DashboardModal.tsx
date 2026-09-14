@@ -147,14 +147,14 @@ type BardoConversation = {
   emails: BardoEmailRun[]
 }
 
-type BucleConversationState = 'waiting' | 'replied'
+type BucleConversationState = WorkflowFollowupConversation['state']
 
 type BucleEvent = {
   id: string
   title: string
   at: string
   note: string
-  type: 'bardo' | 'follow-up' | 'reply'
+  type: 'bardo' | 'follow-up' | 'reply' | 'issue' | 'cancelled'
 }
 
 type BucleConversation = {
@@ -164,6 +164,7 @@ type BucleConversation = {
   email: string
   state: BucleConversationState
   lastBardoMessageAt: string
+  eligibleAt: string | null
   nextFollowUpAt: string | null
   nextIn: string | null
   followUpCount: number
@@ -449,48 +450,87 @@ function mapBucleConversation(conversation: WorkflowFollowupConversation): Bucle
   const orderedEvents = [...conversation.events].sort((left, right) => (
     new Date(left.dueAt || left.sentAt || 0).getTime() - new Date(right.dueAt || right.sentAt || 0).getTime()
   ))
-  const firstDue = orderedEvents.find((event) => event.dueAt)?.dueAt ?? null
-  const bardoDate = firstDue ? new Date(new Date(firstDue).getTime() - 7 * 86_400_000).toISOString() : null
+  const bardoDate = conversation.lastBardoMessageAt
   const events: BucleEvent[] = [
     ...(bardoDate ? [{
       id: `${conversation.id}-bardo`,
       title: 'Mensaje de El Bardo',
-      at: formatDateTime(bardoDate),
+      at: bardoDate,
       note: 'Inicio de la espera semanal',
       type: 'bardo' as const,
     }] : []),
     ...orderedEvents.flatMap((event) => {
       const items: BucleEvent[] = []
-      if (event.sentAt) items.push({
+      if (event.status === 'sent' && event.sentAt) items.push({
         id: `${event.id}-sent`,
         title: `Recontacto automático ${event.followUpNumber}`,
-        at: formatDateTime(event.sentAt),
-        note: event.error?.message || 'Enviado tras 7 días sin respuesta',
+        at: event.sentAt,
+        note: 'Envío confirmado',
         type: 'follow-up',
       })
       if (event.responseDetectedAt) items.push({
         id: `${event.id}-reply`,
         title: 'Respuesta recibida',
-        at: formatDateTime(event.responseDetectedAt),
+        at: event.responseDetectedAt,
         note: 'Seguimiento cerrado',
         type: 'reply',
+      })
+      if (event.status === 'cancelled') items.push({
+        id: `${event.id}-cancelled`,
+        title: `Recontacto ${event.followUpNumber} cancelado`,
+        at: event.updatedAt || event.dueAt || '',
+        note: bucleCancellationReason(event.cancellationReason),
+        type: 'cancelled',
+      })
+      if (event.error || ['failed', 'delivery_unknown'].includes(event.status)) items.push({
+        id: `${event.id}-issue`,
+        title: event.status === 'delivery_unknown' ? 'Entrega sin confirmar' : event.status === 'pending' ? 'Reintento pendiente' : 'Fallo de seguimiento',
+        at: event.updatedAt || event.dueAt || '',
+        note: event.error?.message || (event.status === 'delivery_unknown' ? 'Requiere revisión antes de volver a enviar.' : 'No se ha confirmado ningún envío para este intento.'),
+        type: 'issue',
       })
       return items
     }),
   ]
+  if (conversation.responseDetectedAt && !orderedEvents.some((event) => event.responseDetectedAt === conversation.responseDetectedAt)) {
+    events.push({ id: `${conversation.id}-reply`, title: 'Respuesta recibida', at: conversation.responseDetectedAt, note: 'Seguimiento cerrado', type: 'reply' })
+  }
 
   return {
     id: conversation.id,
     contact: conversation.contact,
     company: conversation.company,
     email: conversation.email,
-    state: conversation.state === 'waiting' ? 'waiting' : 'replied',
-    lastBardoMessageAt: formatDateTime(bardoDate, 'No disponible'),
-    nextFollowUpAt: conversation.nextFollowUpAt ? formatDateTime(conversation.nextFollowUpAt) : null,
+    state: conversation.state,
+    lastBardoMessageAt: formatBucleDate(bardoDate),
+    eligibleAt: conversation.eligibleAt,
+    nextFollowUpAt: conversation.nextFollowUpAt,
     nextIn: relativeUntil(conversation.nextFollowUpAt),
     followUpCount: conversation.followUpCount,
-    events,
+    events: events.sort((a, b) => new Date(a.at || 0).getTime() - new Date(b.at || 0).getTime()),
   }
+}
+
+const bucleStateLabels: Record<BucleConversationState, string> = {
+  waiting: 'En espera', generating: 'Preparando mensaje', sending: 'Enviando',
+  replied: 'Respondió', closed: 'Seguimiento cerrado', failed: 'Falló', 'needs-review': 'Revisar entrega',
+}
+
+function formatBucleDate(value: string | null) {
+  if (!value || !Number.isFinite(Date.parse(value))) return 'No disponible'
+  return new Intl.DateTimeFormat('es-ES', {
+    timeZone: 'Europe/Madrid', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  }).format(new Date(value))
+}
+
+function bucleCancellationReason(reason: string | null) {
+  const labels: Record<string, string> = {
+    incoming_reply_detected: 'Se recibió una respuesta.', suppression_list: 'El contacto está dado de baja.',
+    lead_do_not_contact: 'El contacto no admite nuevos mensajes.', automation_disabled: 'Automatización pausada.',
+    conversation_not_eligible: 'La conversación ya no admite seguimiento.', newer_outgoing_message: 'Hay un mensaje posterior.',
+    eligibility_changed: 'La conversación ya no cumple las condiciones de seguimiento.',
+  }
+  return labels[reason || ''] || 'Seguimiento cancelado sin envío.'
 }
 
 function mapMarketingAsset(asset: WorkflowCreative): MarketingAsset | null {
@@ -517,103 +557,6 @@ function mapMarketingAsset(asset: WorkflowCreative): MarketingAsset | null {
     status,
   }
 }
-
-const bucleConversations: BucleConversation[] = [
-  {
-    id: 'BUCLE-NORA-VIDAL',
-    contact: 'Nora Vidal',
-    company: 'Ánfora Studio',
-    email: 'nora@anforastudio.es',
-    state: 'waiting',
-    lastBardoMessageAt: '17 ago 2026 · 16:30',
-    nextFollowUpAt: 'Hoy · 16:30',
-    nextIn: '6 h 30 min',
-    followUpCount: 0,
-    events: [
-      { id: 'NORA-BARDO', title: 'Mensaje de El Bardo', at: '17 ago · 16:30', note: 'Inicio de la espera semanal', type: 'bardo' },
-    ],
-  },
-  {
-    id: 'BUCLE-MATEO-RIOS',
-    contact: 'Mateo Ríos',
-    company: 'Ríos & Co.',
-    email: 'mateo@riosyco.es',
-    state: 'waiting',
-    lastBardoMessageAt: '11 ago 2026 · 09:15',
-    nextFollowUpAt: 'Mañana · 09:15',
-    nextIn: '23 h 15 min',
-    followUpCount: 1,
-    events: [
-      { id: 'MATEO-BARDO', title: 'Mensaje de El Bardo', at: '11 ago · 09:15', note: 'Inicio de la espera semanal', type: 'bardo' },
-      { id: 'MATEO-F1', title: 'Recontacto automático 1', at: '18 ago · 09:15', note: '7 días después', type: 'follow-up' },
-    ],
-  },
-  {
-    id: 'BUCLE-AINA-REY',
-    contact: 'Aina Rey',
-    company: 'Taller Nómada',
-    email: 'aina@tallernomada.es',
-    state: 'waiting',
-    lastBardoMessageAt: '5 ago 2026 · 11:00',
-    nextFollowUpAt: 'Mié 26 ago · 11:00',
-    nextIn: '2 d 1 h',
-    followUpCount: 2,
-    events: [
-      { id: 'AINA-BARDO', title: 'Mensaje de El Bardo', at: '5 ago · 11:00', note: 'Inicio de la espera semanal', type: 'bardo' },
-      { id: 'AINA-F1', title: 'Recontacto automático 1', at: '12 ago · 11:00', note: '7 días después', type: 'follow-up' },
-      { id: 'AINA-F2', title: 'Recontacto automático 2', at: '19 ago · 11:00', note: '7 días después', type: 'follow-up' },
-    ],
-  },
-  {
-    id: 'BUCLE-BRUNO-SANZ',
-    contact: 'Bruno Sanz',
-    company: 'Lumen Norte',
-    email: 'bruno@lumennorte.es',
-    state: 'waiting',
-    lastBardoMessageAt: '31 jul 2026 · 14:00',
-    nextFollowUpAt: 'Vie 28 ago · 14:00',
-    nextIn: '4 d 4 h',
-    followUpCount: 3,
-    events: [
-      { id: 'BRUNO-BARDO', title: 'Mensaje de El Bardo', at: '31 jul · 14:00', note: 'Inicio de la espera semanal', type: 'bardo' },
-      { id: 'BRUNO-F1', title: 'Recontacto automático 1', at: '7 ago · 14:00', note: '7 días después', type: 'follow-up' },
-      { id: 'BRUNO-F2', title: 'Recontacto automático 2', at: '14 ago · 14:00', note: '7 días después', type: 'follow-up' },
-      { id: 'BRUNO-F3', title: 'Recontacto automático 3', at: '21 ago · 14:00', note: '7 días después', type: 'follow-up' },
-    ],
-  },
-  {
-    id: 'BUCLE-IKER-SOL',
-    contact: 'Iker Sol',
-    company: 'Métrica Sur',
-    email: 'iker@metricasur.es',
-    state: 'waiting',
-    lastBardoMessageAt: '9 ago 2026 · 17:00',
-    nextFollowUpAt: 'Dom 30 ago · 17:00',
-    nextIn: '6 d 7 h',
-    followUpCount: 2,
-    events: [
-      { id: 'IKER-BARDO', title: 'Mensaje de El Bardo', at: '9 ago · 17:00', note: 'Inicio de la espera semanal', type: 'bardo' },
-      { id: 'IKER-F1', title: 'Recontacto automático 1', at: '16 ago · 17:00', note: '7 días después', type: 'follow-up' },
-      { id: 'IKER-F2', title: 'Recontacto automático 2', at: '23 ago · 17:00', note: '7 días después', type: 'follow-up' },
-    ],
-  },
-  {
-    id: 'BUCLE-CLARA-NAVAS',
-    contact: 'Clara Navas',
-    company: 'Bruma Labs',
-    email: 'clara@brumalabs.es',
-    state: 'replied',
-    lastBardoMessageAt: '3 ago 2026 · 14:20',
-    nextFollowUpAt: null,
-    nextIn: null,
-    followUpCount: 1,
-    events: [
-      { id: 'CLARA-BARDO', title: 'Mensaje de El Bardo', at: '3 ago · 14:20', note: 'Inicio de la espera semanal', type: 'bardo' },
-      { id: 'CLARA-F1', title: 'Recontacto automático 1', at: '10 ago · 14:20', note: '7 días después', type: 'follow-up' },
-      { id: 'CLARA-REPLY', title: 'Respuesta recibida', at: '12 ago · 09:46', note: 'Seguimiento cerrado', type: 'reply' },
-    ],
-  },
-]
 
 const demoMarketingAssets: MarketingAsset[] = [
   {
@@ -2039,28 +1982,52 @@ function BucleDashboard() {
   const historyTabRef = useRef<HTMLButtonElement>(null)
   const [activeTab, setActiveTab] = useState<'queue' | 'history'>('queue')
   const [query, setQuery] = useState('')
-  const [selectedConversationId, setSelectedConversationId] = useState(bucleConversations[0].id)
-  const [conversations, setConversations] = useState<BucleConversation[]>(bucleConversations)
+  const [selectedConversationId, setSelectedConversationId] = useState('')
+  const [conversations, setConversations] = useState<BucleConversation[]>([])
   const [followupDataState, setFollowupDataState] = useState<WorkflowDataState>('loading')
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null)
+  const [refreshVersion, setRefreshVersion] = useState(0)
 
   useEffect(() => {
     let active = true
-    workflowApi.followups(200)
-      .then((result) => {
+    let requestInFlight = false
+    const controller = new AbortController()
+    const refresh = async () => {
+      if (requestInFlight) return
+      requestInFlight = true
+      try {
+        const result = await workflowApi.followups(200, AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]))
         if (!active) return
         const mapped = result.conversations.map(mapBucleConversation)
         setFollowupDataState(result.available ? 'postgres' : 'unavailable')
-        if (result.available) setConversations(mapped)
-        if (mapped[0]) setSelectedConversationId(mapped[0].id)
-      })
-      .catch(() => active && setFollowupDataState('error'))
-    return () => { active = false }
-  }, [])
+        setConversations(result.available ? mapped : [])
+        setLastUpdatedAt(result.available ? new Date().toISOString() : null)
+      } catch {
+        if (active) setFollowupDataState('error')
+      } finally {
+        requestInFlight = false
+      }
+    }
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void refresh()
+    }
+    void refresh()
+    const interval = window.setInterval(refreshWhenVisible, 15_000)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    window.addEventListener('focus', refreshWhenVisible)
+    return () => {
+      active = false
+      controller.abort()
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+      window.removeEventListener('focus', refreshWhenVisible)
+    }
+  }, [refreshVersion])
 
-  const waitingConversations = conversations.filter((conversation) => conversation.state === 'waiting')
+  const waitingConversations = conversations.filter((conversation) => ['waiting', 'generating', 'sending'].includes(conversation.state))
   const normalizedQuery = query.trim().toLocaleLowerCase('es')
   const filteredConversations = conversations.filter((conversation) => (
-    `${conversation.contact} ${conversation.company} ${conversation.email} ${conversation.state}`
+    `${conversation.contact} ${conversation.company} ${conversation.email} ${bucleStateLabels[conversation.state]}`
       .toLocaleLowerCase('es')
       .includes(normalizedQuery)
   ))
@@ -2080,6 +2047,14 @@ function BucleDashboard() {
 
   return (
     <div className="dashboard-body bucle-control-room">
+      <div className="bucle-refresh" aria-live="polite">
+        <span>{followupDataState === 'error'
+          ? lastUpdatedAt ? 'No se pudo actualizar. Se conserva la última consulta; los datos pueden haber cambiado.' : 'No se pudo consultar el seguimiento. Pulsa Actualizar para reintentar.'
+          : followupDataState === 'unavailable' ? 'El seguimiento todavía no está disponible en la base de datos.'
+            : lastUpdatedAt ? `Última consulta: ${formatBucleDate(lastUpdatedAt)} · Actualización cada 15 s`
+              : 'Consultando seguimiento…'}</span>
+        <button type="button" onClick={() => setRefreshVersion((version) => version + 1)}><RefreshCcw aria-hidden="true" /> Actualizar</button>
+      </div>
       <div className="bucle-tabs" role="tablist" aria-label="Secciones de seguimiento semanal">
         <button
           ref={queueTabRef}
@@ -2121,29 +2096,31 @@ function BucleDashboard() {
 
           <div className="bucle-fixed-rule">
             <Clock3 aria-hidden="true" />
-            <div><strong>7 días</strong><span>entre cada mensaje</span></div>
-            <p>Si llega una respuesta, la conversación sale de la cola automáticamente.</p>
+            <div><strong>Lunes · 10:00</strong><span>Hora de Madrid · mínimo 7 días sin respuesta</span></div>
+            <p>Revisión semanal de hasta 10 seguimientos. Las fechas son previsiones: dependen de que el flujo esté activo y haya capacidad. Las respuestas y bajas detienen el seguimiento.</p>
           </div>
 
           <div className="bucle-queue-heading">
-            <h4>Próximos recontactos</h4>
-            <span>{waitingConversations.length} en espera</span>
+            <h4>Próximas revisiones</h4>
+            <span>{waitingConversations.length} en seguimiento</span>
           </div>
           <ol className="bucle-next-list">
-            {waitingConversations.slice(0, 4).map((conversation) => (
+            {waitingConversations.map((conversation) => (
               <li key={conversation.id}>
-                <span className="bucle-countdown"><small>Dentro de</small><strong>{conversation.nextIn}</strong></span>
+                <span className="bucle-countdown"><small>{conversation.state === 'waiting' ? 'Revisión en' : 'Estado'}</small><strong>{conversation.state === 'waiting' ? conversation.nextIn : bucleStateLabels[conversation.state]}</strong></span>
                 <span className="bucle-next-contact">
                   <strong>{conversation.contact}</strong>
                   <small>{conversation.company} · {conversation.email}</small>
                 </span>
                 <span className="bucle-next-meta">
-                  <strong>{conversation.nextFollowUpAt}</strong>
+                  <strong>{conversation.nextFollowUpAt ? formatBucleDate(conversation.nextFollowUpAt) : bucleStateLabels[conversation.state]}</strong>
                   <small>{conversation.followUpCount ? followUpLabel(conversation.followUpCount) : 'Será el primer recontacto'}</small>
                 </span>
               </li>
             ))}
           </ol>
+          {!waitingConversations.length && <p className="bucle-empty" role="status">{followupDataState === 'postgres' ? 'No hay conversaciones esperando seguimiento. Las próximas aparecerán aquí cuando cumplan las condiciones.' : followupDataState === 'loading' ? 'Cargando conversaciones…' : 'La cola no está disponible. Consulta el estado de conexión de arriba.'}</p>}
+          {conversations.length >= 200 && <p className="bucle-empty">Se muestran hasta 200 conversaciones, dando prioridad a las próximas revisiones.</p>}
         </section>
       )}
 
@@ -2184,7 +2161,7 @@ function BucleDashboard() {
                         <span className="bucle-history-person"><strong>{conversation.contact}</strong><small>{conversation.company}</small></span>
                         <span className="bucle-history-email">{conversation.email}</span>
                         <span className="bucle-history-state" data-state={conversation.state}>
-                          {conversation.state === 'waiting' ? `Próximo en ${conversation.nextIn}` : 'Respondió · cerrado'}
+                          {conversation.state === 'waiting' ? `Revisión en ${conversation.nextIn}` : bucleStateLabels[conversation.state]}
                         </span>
                         <span className="bucle-history-laps">
                           <strong>{conversation.followUpCount}</strong>
@@ -2195,7 +2172,7 @@ function BucleDashboard() {
                   ))}
                 </ul>
               ) : (
-                <div className="bucle-history-empty"><Search aria-hidden="true" /><strong>Sin coincidencias</strong><span>Prueba con otro nombre, empresa o correo.</span></div>
+                <div className="bucle-history-empty"><Search aria-hidden="true" /><strong>{query ? 'Sin coincidencias' : followupDataState === 'postgres' ? 'Sin seguimientos todavía' : 'Historial no disponible'}</strong><span>{query ? 'Prueba con otro nombre, empresa o correo.' : followupDataState === 'postgres' ? 'Las conversaciones aparecerán cuando entren en seguimiento.' : 'Consulta el estado de conexión de arriba.'}</span></div>
               )}
             </section>
 
@@ -2203,23 +2180,24 @@ function BucleDashboard() {
               <article className="bucle-history-detail" aria-live="polite">
                 <header>
                   <div><h4>{selectedConversation.contact}</h4><p>{selectedConversation.company} · {selectedConversation.email}</p></div>
-                  <span data-state={selectedConversation.state}>{selectedConversation.state === 'waiting' ? 'En espera' : 'Respondió'}</span>
+                  <span data-state={selectedConversation.state}>{bucleStateLabels[selectedConversation.state]}</span>
                 </header>
 
                 <dl className="bucle-history-facts">
                   <div><dt>Mensaje de El Bardo</dt><dd>{selectedConversation.lastBardoMessageAt}</dd></div>
-                  <div><dt>Próximo recontacto</dt><dd>{selectedConversation.nextFollowUpAt ? `${selectedConversation.nextFollowUpAt} · faltan ${selectedConversation.nextIn}` : 'Sin próximo envío'}</dd></div>
+                  <div><dt>Revisión prevista · Madrid</dt><dd>{selectedConversation.nextFollowUpAt ? `${formatBucleDate(selectedConversation.nextFollowUpAt)} · faltan ${selectedConversation.nextIn}` : bucleStateLabels[selectedConversation.state]}</dd></div>
                   <div><dt>Recontactos automáticos</dt><dd>{followUpLabel(selectedConversation.followUpCount)}</dd></div>
                 </dl>
+                {selectedConversation.eligibleAt && <p className="bucle-eligible">Mínimo de siete días cumplido el {formatBucleDate(selectedConversation.eligibleAt)}. Se recogerá en una revisión posterior si sigue sin respuesta.</p>}
 
                 <section className="bucle-event-history" aria-labelledby="bucle-event-history-title">
-                  <div className="bucle-event-heading"><h5 id="bucle-event-history-title">Secuencia semanal</h5><span>Intervalo fijo · 7 días</span></div>
+                  <div className="bucle-event-heading"><h5 id="bucle-event-history-title">Historial de seguimiento</h5><span>Fechas en hora de Madrid</span></div>
                   <ol>
                     {selectedConversation.events.map((event) => (
                       <li key={event.id} data-type={event.type}>
-                        <span className="bucle-event-mark">{event.type === 'reply' ? <Check aria-hidden="true" /> : <Send aria-hidden="true" />}</span>
+                        <span className="bucle-event-mark">{event.type === 'reply' ? <Check aria-hidden="true" /> : event.type === 'issue' ? <AlertTriangle aria-hidden="true" /> : event.type === 'cancelled' ? <X aria-hidden="true" /> : <Send aria-hidden="true" />}</span>
                         <span><strong>{event.title}</strong><small>{event.note}</small></span>
-                        <time>{event.at}</time>
+                        <time dateTime={event.at || undefined}>{formatBucleDate(event.at)}</time>
                       </li>
                     ))}
                   </ol>

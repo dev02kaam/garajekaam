@@ -2330,6 +2330,36 @@ footer span:last-child {
   margin-bottom: 20px;
 }
 
+.bucle-refresh {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px clamp(14px, 3vw, 30px);
+  color: #285d4d;
+  background: #edf8f3;
+  font-size: 0.75rem;
+}
+
+.bucle-refresh button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid #2a7862;
+  color: #173c31;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.bucle-refresh button:hover { background: #dfeae5; }
+.bucle-refresh button:focus-visible { outline: 3px solid #173c31; outline-offset: 3px; }
+.bucle-refresh svg { width: 16px; height: 16px; }
+.bucle-empty, .bucle-history-detail .bucle-eligible { color: #50685f; font-size: 0.8rem; line-height: 1.5; padding-block: 12px; }
+
 .bucle-panel-heading h3,
 .bucle-panel-heading p {
   margin: 0;
@@ -2559,6 +2589,8 @@ footer span:last-child {
 .bucle-history-email { grid-column: 1; }
 .bucle-history-state { grid-column: 1; color: #78e5c3; font-size: 0.67rem; font-weight: 800; }
 .bucle-history-state[data-state='replied'] { color: #f0c36b; }
+.bucle-history-state[data-state='failed'],
+.bucle-history-state[data-state='needs-review'] { color: #ffc8bb; }
 .bucle-history-index button.is-selected .bucle-history-person small,
 .bucle-history-index button.is-selected .bucle-history-email,
 .bucle-history-index button.is-selected .bucle-history-state { color: #285d4d; }
@@ -2621,6 +2653,10 @@ footer span:last-child {
 .bucle-history-detail p { margin-top: 5px; color: #5d7169; font-size: 0.73rem; }
 .bucle-history-detail > header > span { padding: 5px 7px; border: 1px solid #2a7862; color: #1e644f; font-size: 0.62rem; font-weight: 800; text-transform: uppercase; }
 .bucle-history-detail > header > span[data-state='replied'] { border-color: #9a6a20; color: #805516; }
+.bucle-history-detail > header > span[data-state='failed'],
+.bucle-history-detail > header > span[data-state='needs-review'],
+.bucle-event-history li[data-type='issue'] .bucle-event-mark { border-color: #a73d2f; color: #912e23; }
+.bucle-history-detail p, .bucle-event-history small { overflow-wrap: anywhere; }
 
 .bucle-history-facts {
   display: grid;
@@ -2666,6 +2702,7 @@ footer span:last-child {
 }
 
 @media (max-width: 520px) {
+  .bucle-refresh { align-items: flex-start; flex-direction: column; }
   .bucle-tabs { padding-inline: 0; }
   .bucle-tabs button { min-width: 0; flex: 1; padding-inline: 10px; }
   .bucle-queue-panel,

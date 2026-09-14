@@ -1,4 +1,5 @@
 import { pool, workflowSchema, workflowSchemaSql } from './database.mjs'
+import { followupQuery, followupStartAfter, mapFollowup } from './followups.mjs'
 
 const relationCache = new Map()
 const relationCacheMs = 30_000
@@ -469,51 +470,9 @@ export async function getConversationEmail(emailId) {
 }
 
 export async function getFollowups(limit) {
-  const result = await availableQuery('ficharia_weekly_followup_status', `
-    SELECT f.*, inbox.contact_name, inbox.company, inbox.domain
-    FROM ${workflowSchemaSql}.ficharia_weekly_followup_status f
-    LEFT JOIN ${workflowSchemaSql}.ficharia_conversation_lead_inbox inbox
-      ON inbox.conversation_id = f.conversation_id
-    ORDER BY
-      CASE WHEN f.status = 'pending' THEN 0 ELSE 1 END,
-      COALESCE(f.next_attempt_at, f.sent_at, f.updated_at) DESC
-    LIMIT $1
-  `, [limit])
-
-  const grouped = new Map()
-  for (const row of result.rows) {
-    const id = String(row.conversation_id)
-    if (!grouped.has(id)) {
-      grouped.set(id, {
-        id,
-        contact: row.contact_name || row.contact_email,
-        company: row.company || row.domain || 'Sin empresa',
-        email: row.contact_email,
-        state: ['pending', 'generating', 'sending'].includes(row.status) ? 'waiting' : row.response_detected_at ? 'replied' : 'closed',
-        nextFollowUpAt: null,
-        followUpCount: 0,
-        events: [],
-      })
-    }
-    const item = grouped.get(id)
-    item.followUpCount = Math.max(item.followUpCount, asNumber(row.followup_number) || 0)
-    if (['pending', 'generating', 'sending'].includes(row.status)) {
-      const next = iso(row.next_attempt_at || row.due_at)
-      if (!item.nextFollowUpAt || (next && next < item.nextFollowUpAt)) item.nextFollowUpAt = next
-    }
-    item.events.push({
-      id: String(row.job_id),
-      followUpNumber: asNumber(row.followup_number) || 0,
-      status: row.status,
-      dueAt: iso(row.due_at),
-      sentAt: iso(row.sent_at),
-      responseDetectedAt: iso(row.response_detected_at),
-      cancellationReason: row.cancellation_reason,
-      error: row.last_error && Object.keys(row.last_error).length ? row.last_error : null,
-    })
-  }
-
-  return { available: result.available, conversations: [...grouped.values()] }
+  const result = await availableQuery('ficharia_weekly_followup_status', followupQuery(workflowSchemaSql),
+    [limit, followupStartAfter, new Date().toISOString()])
+  return { available: result.available, conversations: result.rows.map(mapFollowup) }
 }
 
 export async function getCreatives(limit) {

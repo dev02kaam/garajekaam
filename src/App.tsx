@@ -31,7 +31,7 @@ const agents: Array<{
   { id: 'prospecto', name: 'El Visionario', action: 'Lanzar campaña' },
   { id: 'bardo', name: 'El Bardo', action: 'Responder' },
   { id: 'marketing', name: 'Marketing', action: 'Imágenes y promociones' },
-  { id: 'bucle', name: 'Doc Bucle', action: 'Programar' },
+  { id: 'bucle', name: 'Doc Bucle', action: 'Ver seguimiento' },
 ]
 
 function GarageMark() {

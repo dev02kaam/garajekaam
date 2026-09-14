@@ -10,6 +10,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test:security": "node --env-file-if-exists=.env scripts/security-smoke.mjs",
+    "test:followups": "node --test scripts/test-followups.mjs",
     "db:inspect": "node --env-file=.env scripts/inspect-database.mjs",
     "db:state": "node --env-file=.env scripts/inspect-ficharia-state.mjs",
     "preview": "vite preview",
