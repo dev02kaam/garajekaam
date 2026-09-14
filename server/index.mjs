@@ -19,6 +19,7 @@ import {
   userQueries,
 } from './database.mjs'
 import { hashPassword, verifyPassword } from './security.mjs'
+import { SESSION_ABSOLUTE_MS, enforceSessionLifetime, preventPrivateCaching, sessionOptions, sessionTiming, startSession } from './session-policy.mjs'
 import {
   getCampaigns,
   getCampaignContacts,
@@ -34,7 +35,6 @@ const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const isProduction = process.env.NODE_ENV === 'production'
 const port = Number(process.env.PORT || 4174)
 const host = process.env.RENDER ? '0.0.0.0' : '127.0.0.1'
-const sessionDurationMs = 8 * 60 * 60 * 1000
 const secureCookie = process.env.SESSION_COOKIE_SECURE === undefined
   ? isProduction
   : process.env.SESSION_COOKIE_SECURE === 'true'
@@ -93,32 +93,25 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
   referrerPolicy: { policy: 'no-referrer' },
 }))
+app.use('/api', preventPrivateCaching)
 app.use(express.json({ limit: '32kb', strict: true }))
 
 await initializeDatabase()
 
 const PostgresSessionStore = pgSessionFactory(session)
-app.use(session({
-  name: 'kaam.sid',
+app.use('/api', session(sessionOptions({
   secret: loadSessionSecret(),
+  secureCookie,
   store: new PostgresSessionStore({
     pool,
     schemaName: authSchema,
     tableName: sessionTableName,
     createTableIfMissing: false,
     pruneSessionInterval: 15 * 60,
+    ttl: SESSION_ABSOLUTE_MS / 1000,
+    disableTouch: true,
   }),
-  resave: false,
-  saveUninitialized: false,
-  rolling: true,
-  cookie: {
-    httpOnly: true,
-    sameSite: 'strict',
-    secure: secureCookie,
-    maxAge: sessionDurationMs,
-    path: '/',
-  },
-}))
+})))
 
 const { generateToken, revokeToken, csrfSynchronisedProtection } = csrfSync()
 
@@ -132,18 +125,23 @@ function verifyRequestOrigin(req, res, next) {
 }
 
 app.use('/api', verifyRequestOrigin)
+app.use('/api', enforceSessionLifetime)
 
 async function sessionUser(req) {
-  if (!req.session.userId) return null
+  if (!sessionTiming(req.session)) return null
   const user = await userQueries.findPublicById(req.session.userId)
-  if (!user || user.status !== 'active') return null
+  if (!user || user.status !== 'active') {
+    await new Promise((resolve, reject) => req.session.regenerate((error) => error ? reject(error) : resolve()))
+    return null
+  }
   return user
 }
 
 async function requireAuthentication(req, res, next) {
   const user = await sessionUser(req)
   if (!user) {
-    req.session.destroy(() => {})
+    await new Promise((resolve, reject) => req.session.destroy((error) => error ? reject(error) : resolve()))
+    res.clearCookie('kaam.sid', { httpOnly: true, sameSite: 'strict', secure: secureCookie, path: '/' })
     return res.status(401).json({ code: 'SESSION_EXPIRED', message: 'La sesión ha caducado.' })
   }
   req.authenticatedUser = user
@@ -255,6 +253,7 @@ app.get('/api/auth/session', async (req, res) => {
     user,
     csrfToken: generateToken(req),
     setupRequired: await userQueries.count() === 0,
+    timing: user ? sessionTiming(req.session) : null,
   })
 })
 
@@ -272,7 +271,7 @@ app.post('/api/auth/login', loginLimiter, csrfSynchronisedProtection, async (req
     req.session.regenerate(async (error) => {
       if (error) return next(error)
       try {
-        req.session.userId = user.id
+        startSession(req.session, user.id)
         const csrfToken = generateToken(req, true)
         const now = new Date().toISOString()
         await userQueries.touchLogin(now, user.id)
@@ -280,7 +279,7 @@ app.post('/api/auth/login', loginLimiter, csrfSynchronisedProtection, async (req
         req.session.save((saveError) => {
           if (saveError) return next(saveError)
           res.set('Cache-Control', 'no-store')
-          res.json({ user: publicUser, csrfToken })
+          res.json({ user: publicUser, csrfToken, timing: sessionTiming(req.session) })
         })
       } catch (callbackError) {
         next(callbackError)
@@ -291,7 +290,13 @@ app.post('/api/auth/login', loginLimiter, csrfSynchronisedProtection, async (req
   }
 })
 
-app.post('/api/auth/logout', csrfSynchronisedProtection, (req, res, next) => {
+app.post('/api/auth/activity', requireAuthentication, csrfSynchronisedProtection, (req, res) => {
+  // Only explicit user activity renews idle time; polling never does.
+  req.session.lastActivityAt = Date.now()
+  res.json({ timing: sessionTiming(req.session) })
+})
+
+app.post('/api/auth/logout', requireAuthentication, csrfSynchronisedProtection, (req, res, next) => {
   revokeToken(req)
   req.session.destroy((error) => {
     if (error) return next(error)
@@ -455,13 +460,17 @@ app.post(
   },
 )
 
+app.use('/api', (_req, res) => res.status(404).json({ code: 'NOT_FOUND', message: 'Recurso no encontrado.' }))
+
 if (isProduction) {
   const distPath = resolve(projectRoot, 'dist')
-  app.use(express.static(distPath, { dotfiles: 'deny', index: false, maxAge: '1h' }))
-  app.get('*splat', (_req, res) => res.sendFile('index.html', { root: distPath, dotfiles: 'deny' }))
+  app.use(express.static(distPath, {
+    dotfiles: 'deny', index: false, maxAge: '1h',
+    setHeaders: (res, path) => { if (path.endsWith('.html')) res.set('Cache-Control', 'private, no-store') },
+  }))
+  app.get('*splat', preventPrivateCaching, (_req, res) => res.sendFile('index.html', { root: distPath, dotfiles: 'deny', cacheControl: false }))
 }
 
-app.use('/api', (_req, res) => res.status(404).json({ code: 'NOT_FOUND', message: 'Recurso no encontrado.' }))
 app.use((error, _req, res, _next) => {
   if (error instanceof multer.MulterError) {
     const message = error.code === 'LIMIT_FILE_SIZE'

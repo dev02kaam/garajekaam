@@ -18,7 +18,8 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import ArcadeModal from './components/ArcadeModal'
 import DashboardModal, { type AgentId } from './components/DashboardModal'
 import UserManagementModal from './components/UserManagementModal'
-import { ApiError, authApi, type SessionState, type SessionUser } from './auth'
+import { ApiError, authApi, type LoginResult } from './auth'
+import { useSession } from './useSession'
 import garagePoster from './assets/garage-integrated-five-jobs.png'
 
 const INITIAL_EMAIL = 'alex.benito@kaam.es'
@@ -110,7 +111,7 @@ function MobileStationDock({ onOpen, onArcade }: {
 function LoginScreen({ csrfToken, setupRequired, onAuthenticated, onRefreshSecurity }: {
   csrfToken: string
   setupRequired: boolean
-  onAuthenticated: (user: SessionUser, nextCsrfToken: string) => void
+  onAuthenticated: (result: LoginResult) => void
   onRefreshSecurity: () => Promise<void>
 }) {
   const [email, setEmail] = useState(INITIAL_EMAIL)
@@ -130,7 +131,7 @@ function LoginScreen({ csrfToken, setupRequired, onAuthenticated, onRefreshSecur
     try {
       const response = await authApi.login(email.trim(), password, csrfToken)
       setPassword('')
-      onAuthenticated(response.user, response.csrfToken)
+      onAuthenticated(response)
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === 'INVALID_CSRF') await onRefreshSecurity()
       setError(caught instanceof Error ? caught.message : 'No se pudo iniciar sesión.')
@@ -226,65 +227,20 @@ function EntryTransition() {
 }
 
 function App() {
-  const [authPhase, setAuthPhase] = useState<'checking' | 'anonymous' | 'authenticated' | 'unavailable'>('checking')
-  const [sessionState, setSessionState] = useState<SessionState | null>(null)
-  const [authError, setAuthError] = useState('')
   const [entering, setEntering] = useState(false)
   const [activeAgent, setActiveAgent] = useState<AgentId | null>(null)
   const [arcadeOpen, setArcadeOpen] = useState(false)
   const [usersOpen, setUsersOpen] = useState(false)
-  const [loggingOut, setLoggingOut] = useState(false)
-  const [sessionMessage, setSessionMessage] = useState('')
   const garageViewportRef = useRef<HTMLDivElement>(null)
 
-  const refreshSession = useCallback(async () => {
-    setAuthError('')
-    try {
-      const nextSession = await authApi.session()
-      setSessionState(nextSession)
-      setAuthPhase(nextSession.authenticated ? 'authenticated' : 'anonymous')
-    } catch (caught) {
-      setAuthError(caught instanceof Error ? caught.message : 'No se pudo comprobar la sesión.')
-      setAuthPhase('unavailable')
-    }
-  }, [])
-
-  useEffect(() => {
-    void refreshSession()
-  }, [refreshSession])
-
-  const expireSession = useCallback(() => {
+  const clearPrivateViews = useCallback(() => {
     setActiveAgent(null)
     setArcadeOpen(false)
     setUsersOpen(false)
-    setSessionState((current) => current ? { ...current, authenticated: false, user: null } : current)
-    setAuthPhase('anonymous')
-    setSessionMessage('Tu sesión ha caducado. Vuelve a identificarte.')
-    void refreshSession()
-  }, [refreshSession])
-
-  useEffect(() => {
-    if (authPhase !== 'authenticated') return
-    const verify = async () => {
-      try {
-        const nextSession = await authApi.session()
-        if (!nextSession.authenticated) {
-          expireSession()
-          return
-        }
-        setSessionState(nextSession)
-      } catch {
-        setSessionMessage('No se ha podido verificar la sesión. Comprueba la conexión.')
-      }
-    }
-    const interval = window.setInterval(() => void verify(), 5 * 60 * 1000)
-    const onVisibilityChange = () => document.visibilityState === 'visible' && void verify()
-    document.addEventListener('visibilitychange', onVisibilityChange)
-    return () => {
-      window.clearInterval(interval)
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-    }
-  }, [authPhase, expireSession])
+    setEntering(false)
+  }, [])
+  const { authPhase, sessionState, setSessionState, authError, sessionMessage, setSessionMessage,
+    refreshSession, completeLogin, logout, expireSession } = useSession(clearPrivateViews)
 
   useEffect(() => {
     if (authPhase !== 'authenticated') return
@@ -298,51 +254,23 @@ function App() {
 
   useEffect(() => {
     if (!entering) return
-    const revealTimer = window.setTimeout(() => setAuthPhase('authenticated'), 260)
     const finishTimer = window.setTimeout(() => setEntering(false), 1180)
     return () => {
-      window.clearTimeout(revealTimer)
       window.clearTimeout(finishTimer)
     }
   }, [entering])
-
-  const completeLogin = (user: SessionUser, csrfToken: string) => {
-    setSessionState({ authenticated: true, user, csrfToken, setupRequired: false })
-    setSessionMessage('')
-    setEntering(true)
-  }
-
-  const logout = async () => {
-    if (!sessionState?.csrfToken || loggingOut) return
-    setLoggingOut(true)
-    setSessionMessage('')
-    try {
-      await authApi.logout(sessionState.csrfToken)
-      setActiveAgent(null)
-      setArcadeOpen(false)
-      setUsersOpen(false)
-      setSessionState((current) => current ? { ...current, authenticated: false, user: null } : current)
-      setAuthPhase('anonymous')
-      await refreshSession()
-    } catch (caught) {
-      if (caught instanceof ApiError && caught.status === 401) expireSession()
-      else setSessionMessage(caught instanceof Error ? caught.message : 'No se pudo cerrar la sesión de forma segura.')
-    } finally {
-      setLoggingOut(false)
-    }
-  }
 
   const authenticatedUser = sessionState?.authenticated ? sessionState.user : null
 
   return (
     <>
       {authPhase === 'checking' || authPhase === 'unavailable' ? (
-        <SessionLoading error={authPhase === 'unavailable' ? authError : ''} onRetry={() => { setAuthPhase('checking'); void refreshSession() }} />
+        <SessionLoading error={authPhase === 'unavailable' ? authError : ''} onRetry={() => void refreshSession()} />
       ) : authPhase === 'anonymous' ? (
         <LoginScreen
           csrfToken={sessionState?.csrfToken || ''}
           setupRequired={Boolean(sessionState?.setupRequired)}
-          onAuthenticated={completeLogin}
+          onAuthenticated={(result) => { completeLogin(result); setEntering(true) }}
           onRefreshSecurity={refreshSession}
         />
       ) : (
@@ -357,8 +285,8 @@ function App() {
                   <button className="topbar-icon" type="button" onClick={() => setUsersOpen(true)} aria-label="Gestionar usuarios" title="Usuarios"><UserRoundCog /></button>
                 )}
                 <span className="system-dot" role="img" aria-label="Sistema en marcha"><i /></span>
-                <button className="topbar-icon" type="button" onClick={() => void logout()} disabled={loggingOut} aria-label="Cerrar sesión" title="Cerrar sesión">
-                  {loggingOut ? <LoaderCircle className="is-spinning" /> : <LogOut />}
+                <button className="topbar-icon" type="button" onClick={() => void logout()} aria-label="Cerrar sesión" title="Cerrar sesión">
+                  <LogOut />
                 </button>
               </div>
             </header>
@@ -396,13 +324,13 @@ function App() {
               onCurrentUserChange={(user) => setSessionState((current) => current ? { ...current, user } : current)}
             />
           )}
-          {sessionMessage && (
-            <div className="session-toast" role="alert">
-              <span>{sessionMessage}</span>
-              <button type="button" onClick={() => setSessionMessage('')} aria-label="Cerrar aviso"><X /></button>
-            </div>
-          )}
         </>
+      )}
+      {sessionMessage && (
+        <div className="session-toast" role="alert">
+          <span>{sessionMessage}</span>
+          <button type="button" onClick={() => setSessionMessage('')} aria-label="Cerrar aviso"><X /></button>
+        </div>
       )}
       {entering && <EntryTransition />}
     </>

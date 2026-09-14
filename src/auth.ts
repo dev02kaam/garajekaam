@@ -17,7 +17,15 @@ export type SessionState = {
   user: SessionUser | null
   csrfToken: string
   setupRequired: boolean
+  timing: SessionTiming | null
 }
+
+export type SessionTiming = { expiresAt: number; absoluteExpiresAt: number; idleTimeoutMs: number; serverNow: number }
+export type LoginResult = { user: SessionUser; csrfToken: string; timing: SessionTiming }
+export const SESSION_FAILURE_EVENT = 'kaam:session-failure'
+let requestGeneration = 0
+
+export function invalidateRequests() { requestGeneration += 1 }
 
 export type UserInput = {
   displayName: string
@@ -42,22 +50,32 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const generation = requestGeneration
   const headers = new Headers(init.headers)
   headers.set('Accept', 'application/json')
-  if (init.body) headers.set('Content-Type', 'application/json')
+  if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
+  const timeout = AbortSignal.timeout(10_000)
+  const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout
 
-  let response: Response
   try {
-    response = await fetch(path, { ...init, headers, credentials: 'same-origin' })
-  } catch {
-    throw new ApiError(0, { code: 'NETWORK_ERROR', message: 'No se puede conectar con el servidor de Garaje Kaam.' })
+    const response = await fetch(path, { ...init, headers, signal, credentials: 'same-origin', cache: 'no-store' })
+    const payload = response.status === 204 ? undefined : await response.json().catch(() => {
+      throw new ApiError(0, { code: 'INVALID_RESPONSE', message: 'El servidor no ha devuelto una respuesta válida.' })
+    })
+    if (generation !== requestGeneration) throw new ApiError(0, { code: 'SESSION_CHANGED' })
+    if (!response.ok) throw new ApiError(response.status, payload)
+    return payload as T
+  } catch (caught) {
+    if (init.signal?.aborted || generation !== requestGeneration) throw caught
+    const error = caught instanceof ApiError ? caught : new ApiError(0, {
+      code: 'NETWORK_ERROR', message: 'No se puede conectar con el servidor. El acceso está bloqueado hasta verificar la sesión.',
+    })
+    if (error.status === 0 || error.status >= 500 || (error.status === 401 && error.code !== 'INVALID_CREDENTIALS') || error.code === 'INVALID_CSRF') {
+      window.dispatchEvent(new CustomEvent(SESSION_FAILURE_EVENT, { detail: error }))
+    }
+    throw error
   }
-
-  if (response.status === 204) return undefined as T
-  const payload = await response.json().catch(() => ({}))
-  if (!response.ok) throw new ApiError(response.status, payload)
-  return payload as T
 }
 
 function csrfHeaders(csrfToken: string) {
@@ -66,7 +84,7 @@ function csrfHeaders(csrfToken: string) {
 
 export const authApi = {
   session: () => request<SessionState>('/api/auth/session'),
-  login: (email: string, password: string, csrfToken: string) => request<{ user: SessionUser; csrfToken: string }>('/api/auth/login', {
+  login: (email: string, password: string, csrfToken: string) => request<LoginResult>('/api/auth/login', {
     method: 'POST',
     headers: csrfHeaders(csrfToken),
     body: JSON.stringify({ email, password }),
@@ -74,6 +92,9 @@ export const authApi = {
   logout: (csrfToken: string) => request<void>('/api/auth/logout', {
     method: 'POST',
     headers: csrfHeaders(csrfToken),
+  }),
+  activity: (csrfToken: string) => request<{ timing: SessionTiming }>('/api/auth/activity', {
+    method: 'POST', headers: csrfHeaders(csrfToken),
   }),
   listUsers: () => request<{ users: SessionUser[] }>('/api/users'),
   createUser: (input: UserInput, csrfToken: string) => request<{ user: SessionUser }>('/api/users', {
@@ -91,4 +112,3 @@ export const authApi = {
     headers: csrfHeaders(csrfToken),
   }),
 }
-

@@ -185,7 +185,6 @@ type MarketingAsset = {
 
 type WorkflowDataState = 'loading' | 'postgres' | 'unavailable' | 'error'
 
-const PROMPT_HISTORY_KEY = 'garaje-kaam-prospecting-prompts'
 const demoCampaigns: CampaignHistoryItem[] = [
   {
     id: 'CMP-SECTORES-0821',
@@ -339,15 +338,6 @@ const bardoConversations: BardoConversation[] = [
     ],
   },
 ]
-
-function readPromptHistory(): PromptHistoryItem[] {
-  try {
-    const saved = localStorage.getItem(PROMPT_HISTORY_KEY)
-    return saved ? JSON.parse(saved).slice(0, 8) : []
-  } catch {
-    return []
-  }
-}
 
 function formatMoment(value: string) {
   return new Intl.DateTimeFormat('es-ES', {
@@ -694,7 +684,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
   const [summary, setSummary] = useState<CsvSummary | null>(null)
   const [csvFile, setCsvFile] = useState<File | null>(null)
   const [prompt, setPrompt] = useState('')
-  const [history, setHistory] = useState<PromptHistoryItem[]>(readPromptHistory)
+  const [history, setHistory] = useState<PromptHistoryItem[]>([])
   const [error, setError] = useState('')
   const [dragging, setDragging] = useState(false)
   const [activeTab, setActiveTab] = useState<'prepare' | 'activity' | 'history'>('prepare')
@@ -713,10 +703,6 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
     state: 'idle',
     message: 'Comprobando la conexión con n8n…',
   })
-
-  useEffect(() => {
-    localStorage.setItem(PROMPT_HISTORY_KEY, JSON.stringify(history))
-  }, [history])
 
   useEffect(() => {
     let active = true

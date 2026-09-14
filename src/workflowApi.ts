@@ -1,4 +1,4 @@
-import { ApiError } from './auth'
+import { request } from './auth'
 
 export type WorkflowCampaign = {
   id: string
@@ -166,23 +166,6 @@ export type WorkflowJob = {
   createdAt: string | null
   updatedAt: string | null
   completedAt: string | null
-}
-
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  let response: Response
-  try {
-    response = await fetch(path, {
-      ...init,
-      credentials: 'same-origin',
-      headers: { Accept: 'application/json', ...init.headers },
-    })
-  } catch {
-    throw new ApiError(0, { code: 'NETWORK_ERROR', message: 'No se puede consultar PostgreSQL.' })
-  }
-
-  const payload = await response.json().catch(() => ({}))
-  if (!response.ok) throw new ApiError(response.status, payload)
-  return payload as T
 }
 
 export const workflowApi = {

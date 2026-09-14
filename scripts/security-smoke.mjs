@@ -51,6 +51,7 @@ try {
   assert(initialCookie.value.startsWith('kaam.sid='), 'No se emitió la cookie de sesión esperada.')
   assert(/HttpOnly/i.test(initialCookie.raw), 'La cookie no incluye HttpOnly.')
   assert(/SameSite=Strict/i.test(initialCookie.raw), 'La cookie no incluye SameSite=Strict.')
+  assert(!/Expires=|Max-Age=/i.test(initialCookie.raw), 'La cookie debe durar solo la sesión del navegador.')
   assert(!expectSecureCookie || /;\s*Secure/i.test(initialCookie.raw), 'La cookie de producción no incluye Secure.')
   assert(typeof sessionPayload.csrfToken === 'string' && sessionPayload.csrfToken.length > 20, 'No se emitió un token CSRF.')
 
@@ -74,6 +75,11 @@ try {
   const loginPayload = await loginResponse.json()
   assert(authenticatedCookie.value.startsWith('kaam.sid='), 'El login no rotó la cookie de sesión.')
   assert(loginPayload.user?.role === 'operator', 'El servidor no devolvió el rol Operador.')
+  assert(!/Expires=|Max-Age=/i.test(authenticatedCookie.raw), 'El login emitió una cookie persistente.')
+  assert(loginPayload.timing?.expiresAt > loginPayload.timing?.serverNow, 'El login no emitió una caducidad válida.')
+  const checkedSession = await request('/api/auth/session', { cookie: authenticatedCookie.value })
+  assert(checkedSession.headers.get('cache-control')?.includes('no-store'), 'La sesión permite caché.')
+  assert((await checkedSession.json()).timing.expiresAt === loginPayload.timing.expiresAt, 'El polling renovó la sesión.')
 
   const forbiddenUsers = await request('/api/users', { cookie: authenticatedCookie.value })
   assert(forbiddenUsers.status === 403, `Un Operador pudo consultar usuarios (${forbiddenUsers.status}).`)
@@ -110,6 +116,7 @@ try {
 
   const expiredAccess = await request('/api/users', { cookie: authenticatedCookie.value })
   assert(expiredAccess.status === 401, `La sesión cerrada conservó acceso (${expiredAccess.status}).`)
+  assert(expiredAccess.headers.get('cache-control')?.includes('no-store'), 'El error de autenticación permite caché.')
 
   console.log('Seguridad verificada: cookie, CSRF, origen, rol Operador, proxy de campañas y revocación de sesión.')
 } finally {
