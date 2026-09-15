@@ -12,6 +12,8 @@
     "test:security": "node --env-file-if-exists=.env scripts/security-smoke.mjs",
     "test:sessions": "node --test scripts/test-sessions.mjs",
     "test:followups": "node --test scripts/test-followups.mjs",
+    "test:campaign-images": "node --test scripts/test-campaign-images.mjs",
+    "db:campaign-images": "node --env-file-if-exists=.env scripts/migrate-campaign-images.mjs",
     "db:inspect": "node --env-file=.env scripts/inspect-database.mjs",
     "db:state": "node --env-file=.env scripts/inspect-ficharia-state.mjs",
     "preview": "vite preview",
@@ -32,6 +34,7 @@
     "pg": "^8.23.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "sharp": "^0.35.4",
     "zod": "^4.4.3"
   },
   "devDependencies": {

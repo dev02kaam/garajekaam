@@ -46,3 +46,49 @@ npm run db:state
 ```
 
 Después del primer arranque se recomienda retirar `KAAM_INITIAL_ADMIN_PASSWORD` del entorno: el bootstrap no vuelve a ejecutarse mientras exista algún usuario.
+# Gestión de imágenes de campañas
+
+El panel de El Visionario gestiona la tabla `campaign_email_assets` en
+`FICHARIA_DATABASE_SCHEMA`. El flujo de envío existente ya lee sus filas activas;
+no requiere importar otro workflow. El servidor conserva la sesión, la validación
+de origen y CSRF para todas las escrituras. Los archivos y miniaturas solo se
+sirven a usuarios autenticados, con `Cache-Control: private, no-store`.
+
+Para instalaciones que ya tenían las siete imágenes, ejecutar una vez:
+
+```powershell
+npm run db:campaign-images
+```
+
+La operación añade `row_version`, necesario para el trigger compartido de
+actualización. No cambia los archivos ni su selección. El equivalente SQL está en
+`flujoficharia/sql/009_ficharia_campaign_image_management.sql`; las instalaciones
+nuevas lo incluyen desde `008_ficharia_campaign_email_assets.sql`.
+
+Contrato bajo `/api/workflows/campaign-images`:
+
+| Método y ruta | Operación |
+| --- | --- |
+| `GET /` | Metadatos de biblioteca, sin cargar originales |
+| `POST /` | Multipart `image`; guarda inactiva o devuelve duplicado existente |
+| `PATCH /:id` | JSON `{active, revision}`; cambia la selección |
+| `PUT /:id` | Multipart `image` y `revision`; sustituye conservando estado |
+| `GET /:id/file` | Original; `?download=1` fuerza descarga, `?thumbnail=1` devuelve miniatura |
+
+Se admiten PNG/JPEG/WebP estáticos de hasta 10 MB, 25 megapíxeles y 10.000 px por
+lado. Sharp comprueba su decodificación y genera miniaturas; el original se
+conserva byte por byte. La tabla actual admite hasta 100 imágenes. Las subidas
+múltiples se envían una a una, con resultado individual y detección de duplicados
+por SHA-256. Un reintento no reactiva ni duplica el archivo existente.
+
+Las escrituras se serializan con un bloqueo de tabla compatible con lecturas;
+`revision` es un token opaco para detectar cambios desde otra sesión. Los errores
+esperados usan 400/404/409/413/422, y las incidencias de infraestructura siguen el
+manejador existente. Activar otra imagen permite retirar la última activa.
+
+Pruebas (siempre con una base desechable, sin usar la configuración real):
+
+```powershell
+$env:CAMPAIGN_IMAGES_TEST_DATABASE_URL = 'postgresql://usuario:clave@127.0.0.1:5432/pruebas'
+npm run test:campaign-images
+```

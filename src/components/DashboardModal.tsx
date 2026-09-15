@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { CampaignImages } from './CampaignImages'
 import marketingAgriculture from '../assets/marketing-agriculture-automation.webp'
 import marketingCreativeStudio from '../assets/marketing-creative-studio.webp'
 import marketingWinery from '../assets/marketing-winery-followup.webp'
@@ -681,13 +682,14 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
   const prepareTabRef = useRef<HTMLButtonElement>(null)
   const activityTabRef = useRef<HTMLButtonElement>(null)
   const campaignHistoryTabRef = useRef<HTMLButtonElement>(null)
+  const campaignImagesTabRef = useRef<HTMLButtonElement>(null)
   const [summary, setSummary] = useState<CsvSummary | null>(null)
   const [csvFile, setCsvFile] = useState<File | null>(null)
   const [prompt, setPrompt] = useState('')
   const [history, setHistory] = useState<PromptHistoryItem[]>([])
   const [error, setError] = useState('')
   const [dragging, setDragging] = useState(false)
-  const [activeTab, setActiveTab] = useState<'prepare' | 'activity' | 'history'>('prepare')
+  const [activeTab, setActiveTab] = useState<'prepare' | 'activity' | 'history' | 'images'>('prepare')
   const [campaignQuery, setCampaignQuery] = useState('')
   const [selectedCampaignId, setSelectedCampaignId] = useState(demoCampaigns[0].id)
   const [databaseCampaigns, setDatabaseCampaigns] = useState<CampaignHistoryItem[]>([])
@@ -1046,7 +1048,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
   const moveTabFocus = (event: React.KeyboardEvent<HTMLButtonElement>) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
     event.preventDefault()
-    const tabs = ['prepare', 'activity', 'history'] as const
+    const tabs = ['prepare', 'activity', 'history', 'images'] as const
     const currentIndex = tabs.indexOf(activeTab)
     const nextIndex = event.key === 'Home'
       ? 0
@@ -1057,7 +1059,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
           : (currentIndex + 1) % tabs.length
     const nextTab = tabs[nextIndex]
     setActiveTab(nextTab)
-    const refs = { prepare: prepareTabRef, activity: activityTabRef, history: campaignHistoryTabRef }
+    const refs = { prepare: prepareTabRef, activity: activityTabRef, history: campaignHistoryTabRef, images: campaignImagesTabRef }
     window.requestAnimationFrame(() => refs[nextTab].current?.focus())
   }
 
@@ -1104,7 +1106,14 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
         >
           <History aria-hidden="true" /> Campañas
         </button>
+        <button ref={campaignImagesTabRef} id="campaign-images-tab" type="button" role="tab"
+          aria-selected={activeTab === 'images'} aria-controls="campaign-images-panel"
+          tabIndex={activeTab === 'images' ? 0 : -1} onClick={() => setActiveTab('images')} onKeyDown={moveTabFocus}>
+          <ImageIcon aria-hidden="true" /> Imágenes
+        </button>
       </div>
+
+      {activeTab === 'images' && <CampaignImages csrfToken={csrfToken} />}
 
       {activeTab === 'prepare' && <main id="prepare-panel" className="campaign-builder" role="tabpanel" aria-labelledby="prepare-tab">
         <section className="campaign-input-section" aria-labelledby="csv-section-title">

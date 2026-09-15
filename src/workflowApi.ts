@@ -168,7 +168,42 @@ export type WorkflowJob = {
   completedAt: string | null
 }
 
+export type CampaignImage = {
+  id: string
+  fileName: string
+  mimeType: string
+  sha256: string
+  sortOrder: number
+  active: boolean
+  sizeBytes: number
+  createdAt: string
+  updatedAt: string
+  revision: string
+}
+
+export const campaignImageUrl = (image: CampaignImage, mode: 'thumbnail' | 'download' | 'preview' = 'thumbnail') =>
+  `/api/workflows/campaign-images/${encodeURIComponent(image.id)}/file?v=${image.sha256}${mode === 'preview' ? '' : `&${mode}=1`}`
+
 export const workflowApi = {
+  campaignImages: (signal?: AbortSignal) => request<{ available: boolean; images: CampaignImage[] }>('/api/workflows/campaign-images', { signal }),
+  uploadCampaignImage: (file: File, csrfToken: string, signal?: AbortSignal) => {
+    const form = new FormData()
+    form.append('image', file)
+    return request<{ image: CampaignImage; duplicate: boolean }>('/api/workflows/campaign-images', {
+      method: 'POST', headers: { 'X-CSRF-Token': csrfToken }, body: form, signal,
+    })
+  },
+  setCampaignImageActive: (image: CampaignImage, active: boolean, csrfToken: string) => request<{ image: CampaignImage }>(`/api/workflows/campaign-images/${encodeURIComponent(image.id)}`, {
+    method: 'PATCH', headers: { 'X-CSRF-Token': csrfToken }, body: JSON.stringify({ active, revision: image.revision }),
+  }),
+  replaceCampaignImage: (image: CampaignImage, file: File, csrfToken: string) => {
+    const form = new FormData()
+    form.append('image', file)
+    form.append('revision', image.revision)
+    return request<{ image: CampaignImage }>(`/api/workflows/campaign-images/${encodeURIComponent(image.id)}`, {
+      method: 'PUT', headers: { 'X-CSRF-Token': csrfToken }, body: form,
+    })
+  },
   config: () => request<{ campaignWebhookConfigured: boolean }>('/api/workflows/config'),
   jobs: (limit = 100) => request<{ available: boolean; jobs: WorkflowJob[] }>(`/api/workflows/jobs?limit=${limit}`),
   campaigns: (limit = 100) => request<{ available: boolean; campaigns: WorkflowCampaign[] }>(`/api/workflows/campaigns?limit=${limit}`),

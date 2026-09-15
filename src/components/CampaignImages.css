@@ -1,0 +1,90 @@
+.campaign-images { padding: 30px clamp(20px, 4vw, 44px) 40px; color: #101416; }
+.campaign-images button, .campaign-images a { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: 8px; padding: 8px 14px; border: 1px solid #8e887c; color: #101416; background: transparent; font: inherit; font-size: .9rem; font-weight: 700; text-decoration: none; cursor: pointer; }
+.campaign-images button:hover:not(:disabled), .campaign-images a:hover { background: #d6d0c3; }
+.campaign-images button:disabled { opacity: .55; cursor: not-allowed; }
+.campaign-images :is(button, a, input):focus-visible { outline: 3px solid #665119; outline-offset: 3px; }
+.campaign-images svg { width: 19px; height: 19px; flex-shrink: 0; }
+.campaign-images-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.campaign-images-heading h3 { margin: 0; font-family: 'Barlow Condensed', sans-serif; font-size: 2.2rem; line-height: 1.1; }
+.campaign-images-heading p { margin: 8px 0 0; color: #58534c; }
+.campaign-images .campaign-images-upload { flex-shrink: 0; border-color: #101416; color: #f3efe4; background: #101416; }
+.campaign-images .campaign-images-upload:hover:not(:disabled) { color: #f3efe4; background: #353a3c; }
+.campaign-images-scope { max-width: 85ch; margin: 22px 0; padding: 15px 0; border-block: 1px solid #c2bbad; color: #514b43; font-size: .9rem; line-height: 1.5; }
+.campaign-images-feedback p, .campaign-images-error { display: flex; align-items: flex-start; gap: 9px; margin: 14px 0; line-height: 1.5; }
+.campaign-images-feedback p { color: #1c6547; }
+.campaign-images-error { color: #943522; }
+.campaign-images-feedback svg, .campaign-images-error svg { margin-top: 2px; }
+.campaign-images-drop { display: flex; align-items: center; gap: 16px; padding: 24px; border: 1px dashed #847a67; background: #f3efe4; }
+.campaign-images-drop.is-dragging { border-style: solid; outline: 2px solid #665119; background: #f3e6b5; }
+.campaign-images-drop > svg { width: 30px; height: 30px; color: #665119; }
+.campaign-images-drop > div { display: flex; flex: 1; flex-direction: column; gap: 5px; }
+.campaign-images-drop span { color: #635b4e; font-size: .83rem; line-height: 1.5; }
+.campaign-images-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 24px 0 20px; }
+.campaign-images-filters { display: flex; gap: 2px; }
+.campaign-images-filters button { border-color: transparent; padding-inline: 10px; }
+.campaign-images-filters button[aria-pressed='true'] { background: #101416; color: #f3efe4; }
+.campaign-images-filters button[aria-pressed='true']:hover { background: #353a3c; }
+.campaign-images-filters span { font-size: .78rem; font-variant-numeric: tabular-nums; }
+.campaign-images-search { display: flex; flex: 1; min-width: 180px; align-items: center; gap: 8px; margin-left: auto; padding: 0 12px; border: 1px solid #8e887c; background: #f3efe4; }
+.campaign-images-search input { width: 100%; min-width: 0; height: 44px; border: 0; color: #101416; background: transparent; font: inherit; font-size: .9rem; }
+.campaign-images-search input::placeholder { color: #635b4e; }
+.campaign-images-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 26px 22px; }
+.campaign-images-item { min-width: 0; padding-bottom: 12px; border-bottom: 1px solid #b5ad9e; }
+.campaign-images .campaign-images-thumbnail { position: relative; display: flex; width: 100%; height: 175px; padding: 12px; overflow: hidden; border: 0; background: #f8f6f0; }
+.campaign-images-thumbnail img { width: 100%; height: 100%; object-fit: contain; }
+.campaign-images-thumbnail > span:not(.campaign-images-preview-error) { position: absolute; right: 8px; bottom: 8px; display: flex; align-items: center; gap: 5px; padding: 5px 8px; color: #f3efe4; background: #101416; font-size: .74rem; }
+.campaign-images-preview-error { display: flex; align-items: center; gap: 10px; padding: 16px; color: #943522; font-size: .85rem; font-weight: 400; line-height: 1.5; }
+.campaign-images-item-info h4 { margin: 13px 0 9px; overflow: hidden; font-size: .92rem; text-overflow: ellipsis; white-space: nowrap; }
+.campaign-images-item-info > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.campaign-images-status { display: inline-flex; align-items: center; gap: 6px; color: #635b4e; font-size: .82rem; font-weight: 700; }
+.campaign-images-status[data-active='true'] { color: #1c6547; }
+.campaign-images-status[data-active='true']::before { width: 7px; height: 7px; border-radius: 50%; background: currentColor; content: ''; }
+.campaign-images-item-info small { color: #635b4e; font-variant-numeric: tabular-nums; }
+.campaign-images-item-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 13px; }
+.campaign-images-item-actions button { flex: 1; }
+.campaign-images-empty { display: flex; min-height: 220px; align-items: center; justify-content: center; flex-direction: column; gap: 12px; text-align: center; }
+.campaign-images-empty > svg { width: 30px; height: 30px; color: #665119; }
+.campaign-images-empty h4, .campaign-images-empty p { max-width: 55ch; margin: 0; }
+.campaign-images-empty p { color: #635b4e; }
+.campaign-images-detail-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(220px, 1fr); gap: 28px; margin-top: 20px; }
+.campaign-images-large { display: flex; min-width: 0; min-height: 300px; align-items: center; justify-content: center; padding: 16px; background: #f8f6f0; }
+.campaign-images-large img { display: block; max-width: 100%; max-height: 480px; object-fit: contain; }
+.campaign-images-details { display: flex; min-width: 0; align-items: flex-start; flex-direction: column; gap: 13px; }
+.campaign-images-details h4 { margin: 0; overflow-wrap: anywhere; font-size: 1.2rem; }
+.campaign-images-details p, .campaign-images-details small { margin: 0; color: #635b4e; line-height: 1.5; }
+.campaign-images-details p + button { margin-top: 8px; }
+.campaign-images-replacement { display: flex; align-items: flex-start; gap: 24px; margin-top: 30px; padding: 22px; border: 1px solid #9c8c65; background: #f3efe4; }
+.campaign-images-replacement > img { width: 170px; max-height: 180px; object-fit: contain; }
+.campaign-images-replacement > div { min-width: 0; }
+.campaign-images-replacement h4 { margin: 0; font-size: 1.1rem; }
+.campaign-images-replacement p { overflow-wrap: anywhere; color: #635b4e; line-height: 1.5; }
+.campaign-images-replacement-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.campaign-images-results { margin-top: 26px; padding-top: 10px; border-top: 1px solid #b5ad9e; }
+.campaign-images-results ul { padding: 0; list-style: none; }
+.campaign-images-results li { display: flex; justify-content: space-between; gap: 18px; padding: 9px 0; border-bottom: 1px solid #ccc4b6; font-size: .85rem; line-height: 1.5; }
+.campaign-images-results li > span { display: flex; min-width: 0; align-items: center; gap: 6px; overflow-wrap: anywhere; }
+.campaign-images-results li > span:first-child { flex: 1; }
+.campaign-images-results li > span:last-child { max-width: 55%; }
+.campaign-images-results li[data-state='failed'] { color: #943522; }
+@media (max-width: 760px) {
+  .campaign-images-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .campaign-images-drop { flex-wrap: wrap; padding: 18px; }
+  .campaign-images-drop > div { min-width: 180px; }
+  .campaign-images-detail-layout { grid-template-columns: 1fr; }
+  .campaign-images-large { min-height: 200px; }
+  .campaign-images-replacement { flex-direction: column; }
+  .campaign-images-replacement > img { width: 100%; max-height: 240px; }
+}
+@media (max-width: 500px) {
+  .campaign-images { padding-inline: 18px; }
+  .campaign-images-heading { align-items: stretch; flex-direction: column; gap: 15px; }
+  .campaign-images-heading h3 { font-size: 2rem; }
+  .campaign-images-toolbar { gap: 10px; }
+  .campaign-images-filters { width: 100%; }
+  .campaign-images-filters button { flex: 1; }
+  .campaign-images-search { min-width: 0; }
+  .campaign-images-grid { grid-template-columns: 1fr; gap: 24px; }
+  .campaign-images .campaign-images-thumbnail { height: 220px; }
+  .campaign-images-results li { flex-direction: column; gap: 3px; }
+  .campaign-images-results li > span:last-child { max-width: 100%; }
+}

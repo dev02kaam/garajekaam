@@ -37,7 +37,7 @@ Los workflows no aparecen como diagramas abstractos, sino como personajes que tr
 - El panel de El Bardo es exclusivamente de observación y separa dos vistas: la ejecución activa a ancho completo y un historial de conversaciones agrupado por cliente y dirección de correo. El historial permite buscar, contar los correos entrantes de cada conversación y consultar el recorrido individual de cada correo. El workflow opera de forma completamente automática y no ofrece edición ni acciones manuales.
 - Doc Bucle supervisa conversaciones con un intercambio real y una respuesta enviada por El Bardo. La revisión ocurre los lunes a las 10:00 de Madrid, con un mínimo de siete días sin respuesta y hasta diez seguimientos por ejecución. El panel muestra también candidatos que aún no han vencido, ordena las próximas revisiones y se actualiza cada 15 segundos mientras está visible. Las fechas son previsiones condicionadas a la publicación y capacidad del flujo. El historial distingue respuestas, cierres, preparación, envío, fallos y entregas sin confirmar; solo cuenta recontactos confirmados como enviados.
 - El Taller Creativo permite redactar un prompt, adjuntar una referencia PNG/JPG/WebP de hasta 10 MB, preparar una vista previa visual de demostración y dejar una revisión por correo lista para su conexión con n8n. Separa creación y biblioteca; el historial es buscable y conserva prompt, referencia, estado e identificador, además de permitir descargar o reutilizar cualquier pieza como punto de partida.
-- La aprobación futura deberá convertir una pieza en la imagen activa que El Visionario incluye en sus correos promocionales. El frontend explica ese relevo, pero no simula que el correo, la generación ni la activación hayan ocurrido realmente.
+- La integración futura del Taller añadirá piezas a la biblioteca compartida de imágenes de El Visionario, donde se decidirá su uso. La generación y ese relevo todavía están pendientes de conectar.
 - Debe ser responsive, accesible por teclado y usable con movimiento reducido.
 - No se inventarán métricas comerciales reales; toda métrica inicial se etiqueta como demostración.
 
@@ -61,6 +61,15 @@ Los workflows no aparecen como diagramas abstractos, sino como personajes que tr
 
 - Workflow n8n de referencia: `C:\Users\USER\Desktop\Archivos_ABS\VisualStudio\flujoficharia\workflow\Ficharia _ AUTOSUFICIENTE _ IA guiada + espera 65-120 s terminado.json`.
 - La base PostgreSQL real contiene actualmente conversaciones, auditoría, campañas, seguimiento semanal y la vista unificada de jobs. El módulo creativo todavía depende de desplegar su migración operativa antes de mostrar datos reales.
+
+## Imágenes de campañas
+
+- El Visionario incluye una pestaña **Imágenes** con las imágenes reales de la lista compartida `campaign_email_assets`. Cada correo selecciona una de las activas.
+- Permite subir desde carpetas o arrastrar hasta 20 archivos por tanda, buscar, filtrar por uso, ampliar, descargar originales, activar/desactivar y sustituir con revisión previa.
+- Las imágenes nuevas se guardan sin activar; los duplicados conservan su estado. Retirar una imagen de los envíos conserva su archivo. Debe quedar una activa antes de retirar la última.
+- Activar, retirar o sustituir una imagen afecta a los próximos envíos de todas las campañas, incluidas las que estén en marcha. Los correos ya enviados conservan su contenido.
+- La sustitución conserva el identificador y estado de uso, reemplaza el archivo y ofrece descargar el anterior antes de confirmar.
+- El Taller Creativo se incorporará después como otro origen de imágenes para esta misma biblioteca. Esta fase no genera imágenes ni las añade automáticamente desde el Taller.
 
 ## Product Principles
 

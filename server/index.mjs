@@ -15,6 +15,7 @@ import {
   closeDatabase,
   initializeDatabase,
   pool,
+  workflowSchema,
   sessionTableName,
   userQueries,
 } from './database.mjs'
@@ -30,6 +31,8 @@ import {
   getJobs,
 } from './workflow-data.mjs'
 import { campaignWebhookConfigured, launchCampaign } from './n8n-client.mjs'
+import { createCampaignImageStore } from './campaign-images.mjs'
+import { campaignImageRouter } from './campaign-image-routes.mjs'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const isProduction = process.env.NODE_ENV === 'production'
@@ -404,6 +407,11 @@ function dashboardRoute(loader) {
 }
 
 app.get('/api/workflows/jobs', requireAuthentication, dashboardRoute(getJobs))
+app.use('/api/workflows/campaign-images', campaignImageRouter({
+  store: createCampaignImageStore(pool, workflowSchema),
+  authenticate: requireAuthentication,
+  protectCsrf: csrfSynchronisedProtection,
+}))
 app.get('/api/workflows/campaigns', requireAuthentication, dashboardRoute(getCampaigns))
 app.get('/api/workflows/campaigns/:campaignId/contacts', requireAuthentication, async (req, res) => {
   const campaignId = parse(idSchema, req.params.campaignId, res)

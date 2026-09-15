@@ -14,6 +14,15 @@ colors:
   arcade-purple: "#a979d8"
   danger: "#ff8576"
   focus: "#fff1a8"
+  # Variantes locales de la pestaña Imágenes de El Visionario.
+  campaign-ink: "#101416"
+  campaign-ink-hover: "#353a3c"
+  campaign-preview-paper: "#f8f6f0"
+  campaign-muted: "#635b4e"
+  campaign-border: "#8e887c"
+  campaign-focus: "#665119"
+  campaign-active: "#1c6547"
+  campaign-error: "#943522"
 typography:
   display:
     fontFamily: "Barlow Condensed, Arial Narrow, sans-serif"
@@ -87,6 +96,26 @@ components:
     typography: "{typography.body}"
     rounded: "{rounded.none}"
     padding: "14px"
+  campaign-upload:
+    backgroundColor: "{colors.campaign-ink}"
+    textColor: "{colors.paper}"
+    rounded: "{rounded.none}"
+    padding: "8px 14px"
+  campaign-upload-hover:
+    backgroundColor: "{colors.campaign-ink-hover}"
+    textColor: "{colors.paper}"
+    rounded: "{rounded.none}"
+    padding: "8px 14px"
+  campaign-action:
+    backgroundColor: "transparent"
+    textColor: "{colors.campaign-ink}"
+    rounded: "{rounded.none}"
+    padding: "8px 14px"
+  campaign-filter-selected:
+    backgroundColor: "{colors.campaign-ink}"
+    textColor: "{colors.paper}"
+    rounded: "{rounded.none}"
+    padding: "8px 10px"
 ---
 
 # Design System: Garaje Kaam
@@ -136,6 +165,10 @@ La paleta parte de una noche azul-negra y papel envejecido; los acentos parecen 
 - **Rojo de Incidencia:** errores de archivo o proceso.
 - **Luz de Foco:** contorno accesible de teclado.
 
+### Campaign Images
+
+La pestaña Imágenes prolonga el papel y la tinta de El Visionario. Sus variantes locales conservan esa misma familia: Tinta de campañas sostiene texto, subida y filtro seleccionado; Papel de previsualización separa cada imagen del fondo. El texto secundario y el trazo de los controles usan tonos cálidos apagados. El foco oscuro sobre papel conserva contraste en esta superficie clara; Imagen en uso e Incidencia sobre papel acompañan siempre a una etiqueta o mensaje. Estas variantes pertenecen a la biblioteca de campañas.
+
 ### Named Rules
 
 **The Cable Conductor Rule.** El naranja conecta la experiencia y señala entrada o actividad; los colores de personaje no deben reemplazarlo en la navegación global.
@@ -158,6 +191,8 @@ La paleta parte de una noche azul-negra y papel envejecido; los acentos parecen 
 - **Body:** instrucciones, mensajes y datos operativos; los párrafos de explicación se mantienen alrededor de 32–48 caracteres por línea cuando la composición lo permite.
 - **Label:** estados, cejas, chips y metadatos en negrita, con espaciado abierto y caja alta cuando actúan como señalética.
 
+En Imágenes, el encabezado conserva Barlow Condensed (2.2rem, interlineado 1.1; 2rem hasta 500px). Las instrucciones, nombres de archivo y acciones usan Atkinson Hyperlegible; los controles son compactos (0.9rem, peso 700). Los contadores y tamaños de archivo usan cifras tabulares. El nombre se abrevia con puntos suspensivos en la galería y admite salto de línea en el detalle.
+
 ### Named Rules
 
 **The Poster and Manual Rule.** Barlow Condensed anuncia; Atkinson Hyperlegible explica y permite actuar. No se intercambian esos papeles en formularios o contenido largo.
@@ -170,6 +205,8 @@ Por encima de 1180px, la tesis ocupa una columna compacta y el garaje otra; por 
 
 El ritmo usa saltos cortos de 6–18px dentro de controles y bloques de 24–64px entre regiones. La densidad es deliberadamente operativa: el espacio libre separa tareas, no crea una estética de landing genérica.
 
+La galería de Imágenes ocupa el ancho del panel de El Visionario, debajo de sus pestañas compartidas. Su secuencia es cabecera y subida, explicación del alcance, zona de arrastre, filtros con búsqueda y colección. La cuadrícula usa tres columnas con separaciones de 26px por 22px, dos columnas hasta 760px y una hasta 500px. En ese último tramo, la cabecera se apila, la subida ocupa el ancho disponible, los filtros forman su propia fila y el contenido conserva 18px de margen interior. Las miniaturas tienen 175px de alto en escritorio y 220px hasta 500px; la imagen completa se contiene sin recorte. El detalle combina una vista amplia y una columna de acciones; hasta 760px se apilan, igual que la revisión de sustitución.
+
 ### Named Rules
 
 **The Same Garage Rule.** En móvil se recorre la misma escena integrada; no se recortan avatares para convertirlos en una lista de tarjetas.
@@ -177,6 +214,8 @@ El ritmo usa saltos cortos de 6–18px dentro de controles y bloques de 24–64p
 ## Elevation & Depth
 
 La profundidad es híbrida. Las superficies grandes se separan con capas tonales y sombras ambientales oscuras; botones, tickets, etiquetas de puesto y la recreativa usan sombras desplazadas, duras y visibles que recuerdan piezas físicas montadas a mano. El desenfoque se limita a las etiquetas superpuestas sobre la escena.
+
+Dentro de Imágenes, la profundidad se resuelve con papel de distintos tonos, divisores finos y bordes de control. La galería y sus acciones permanecen planas; el marco del dashboard conserva la profundidad compartida del sistema.
 
 ### Shadow Vocabulary
 
@@ -238,6 +277,17 @@ Cada puesto es una zona transparente sobre la escena con un beacon circular nume
 ### Dashboard Modal
 
 Los dashboards comparten marco, cabecera fija, cierre, trampa de foco y comportamiento responsive. El tema cambia el acento, el material interior y la voz —trato, manuscrito, creatividad o relatividad— sin alterar patrones de acción.
+
+### Campaign Images
+
+La biblioteca compartida aparece como cuarta pestaña de El Visionario. Reutiliza la cabecera y navegación del dashboard, incluidas flechas, Inicio y Fin para cambiar de pestaña con el teclado.
+
+- **Controles:** botones y enlaces cuadrados, altura mínima de 44px, borde fino y texto en negrita. Subir imágenes y el filtro seleccionado usan tinta sólida con texto de papel; las acciones restantes tienen fondo transparente. El hover cambia el tono del fondo. El foco local usa un contorno oscuro de 3px separado 3px; los controles deshabilitados conservan su etiqueta al 55% de opacidad.
+- **Subida:** el botón de cabecera y Elegir archivos abren el selector local. El área de arrastre usa papel claro y borde discontinuo; al arrastrar cambia a borde continuo, contorno oscuro y papel cálido. Formatos, límite de tamaño y «Se guardan sin activar» permanecen junto a la acción. El botón de cabecera anuncia «Subiendo imágenes…» o «Guardando…» durante la operación; los resultados de cada archivo se muestran como lista legible, con estados escritos y mensajes de error.
+- **Exploración:** Todas, En uso y Sin usar conservan contadores visibles; la selección combina fondo oscuro y estado accesible. El buscador por nombre y la actualización comparten su fila. Cada pieza reúne una miniatura completa, Ampliar siempre visible, nombre, estado, tamaño y acciones de uso y descarga. Un divisor inferior organiza la colección sin encerrar cada pieza en otra tarjeta.
+- **Estado y alcance:** En uso combina texto verde con un punto; Sin usar mantiene texto secundario. Una explicación antes de la colección hace visible que la lista es compartida y que los cambios afectan a los próximos envíos, incluidas las campañas en marcha. Los mensajes de confirmación nombran el efecto de activar, retirar o sustituir. Al bloquear la retirada de la última activa, el detalle explica cómo continuar.
+- **Detalle y sustitución:** ampliar cambia el contenido dentro del mismo panel y ofrece Volver a la galería; el foco pasa a ese control y vuelve a la miniatura cuando la galería está montada. Si la pieza deja de coincidir con la búsqueda, el foco vuelve al buscador. La imagen se presenta completa, con el nombre legible y las acciones de uso, descarga y sustitución al lado. La sustitución se revisa en un bloque de papel con imagen nueva, efecto sobre los envíos, indicación de descargar el archivo anterior y acciones explícitas de confirmar o cancelar.
+- **Estados de servicio:** carga, biblioteca vacía, filtro sin resultados, almacenamiento no disponible y error de carga tienen mensajes distintos y una siguiente acción cuando corresponde. Si falla una miniatura, el mensaje conserva las opciones de descargar o sustituir. Confirmaciones y errores se anuncian a las tecnologías de asistencia.
 
 ### Access Management
 
