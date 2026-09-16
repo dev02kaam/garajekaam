@@ -9,6 +9,7 @@ import {
   LogIn,
   LogOut,
   MessageSquareReply,
+  MoveHorizontal,
   Palette,
   Send,
   UserRoundCog,
@@ -232,6 +233,7 @@ function App() {
   const [arcadeOpen, setArcadeOpen] = useState(false)
   const [usersOpen, setUsersOpen] = useState(false)
   const garageViewportRef = useRef<HTMLDivElement>(null)
+  const [garageCanPan, setGarageCanPan] = useState(false)
 
   const clearPrivateViews = useCallback(() => {
     setActiveAgent(null)
@@ -244,12 +246,15 @@ function App() {
 
   useEffect(() => {
     if (authPhase !== 'authenticated') return
-    const resetGaragePosition = () => {
-      if (garageViewportRef.current) garageViewportRef.current.scrollLeft = 0
-    }
-    resetGaragePosition()
-    const frame = window.requestAnimationFrame(resetGaragePosition)
-    return () => window.cancelAnimationFrame(frame)
+    const viewport = garageViewportRef.current
+    if (!viewport) return
+    viewport.scrollLeft = 0
+    const updatePan = () => setGarageCanPan(viewport.scrollWidth > viewport.clientWidth + 1)
+    const observer = new ResizeObserver(updatePan)
+    observer.observe(viewport)
+    if (viewport.firstElementChild) observer.observe(viewport.firstElementChild)
+    updatePan()
+    return () => observer.disconnect()
   }, [authPhase])
 
   useEffect(() => {
@@ -293,7 +298,14 @@ function App() {
 
             <main id="garaje">
               <section className="garage-stage" aria-label="Centro de control del garaje">
-                <div ref={garageViewportRef} className="garage-viewport">
+                <div
+                  ref={garageViewportRef}
+                  className="garage-viewport"
+                  role="region"
+                  aria-label="Panorámica del garaje"
+                  aria-describedby={garageCanPan ? 'garage-pan-hint' : undefined}
+                  tabIndex={garageCanPan ? 0 : undefined}
+                >
                   <div className="garage-scene">
                     <div className="garage-camera">
                       <img className="garage-poster" src={garagePoster} alt="Garaje doméstico con cinco personajes sentados, puestos de trabajo y una recreativa" />
@@ -307,6 +319,11 @@ function App() {
                     </div>
                   </div>
                 </div>
+                {garageCanPan && (
+                  <p id="garage-pan-hint" className="garage-pan-hint">
+                    <MoveHorizontal aria-hidden="true" /> Desliza para recorrer el garaje
+                  </p>
+                )}
                 <MobileStationDock onOpen={setActiveAgent} onArcade={() => setArcadeOpen(true)} />
               </section>
             </main>
