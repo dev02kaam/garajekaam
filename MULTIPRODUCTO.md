@@ -107,10 +107,13 @@ seleccionados se conservan en una cola que trabaja de lunes a viernes, de 10:00 
 17:00 en Europe/Madrid, y continúa el siguiente día laborable hasta terminar.
 La cola ya no descarta contactos cuando se llenan las fechas iniciales del prompt.
 
-El ritmo conservado es 50 intentos por hora entre las campañas de Ficharia; el
-tamaño de la campaña no cambia esa cuota. Son como máximo unos 350 por jornada
-completa, antes de descontar tiempos de preparación o incidencias. Para acelerar
-hay que ajustar la política al límite real del proveedor de cada producto.
+El máximo configurado es 150 intentos por hora móvil y buzón de Ficharia,
+compartidos con respuestas y seguimientos. La separación mínima es de 30 segundos,
+por lo que el ritmo efectivo máximo ronda 120/h, menos el tiempo de transporte.
+La cola se conserva entre jornadas y no repite entregas ambiguas. Los cuatro
+flujos existentes de n8n se actualizaron el 23/09/2026; el acta y la reversión
+están en `../flujoficharia/docs/PRODUCCION_2026-09-23.md`. Esta publicación no
+despliega automáticamente el frontend/backend del Garaje.
 DECA comparte la política preparada, pero continúa bloqueado hasta tener su
 adaptador, remitente y credenciales; nunca envía a través de Ficharia.
 
