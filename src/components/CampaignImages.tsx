@@ -1,7 +1,8 @@
+import { useProducts } from '../productContext'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, ArrowLeft, Check, Download, ImagePlus, LoaderCircle, RefreshCcw, Search, Upload, X, ZoomIn } from 'lucide-react'
 import { ApiError } from '../auth'
-import { campaignImageUrl, workflowApi, type CampaignImage } from '../workflowApi'
+import { type CampaignImage } from '../workflowApi'
 import './CampaignImages.css'
 
 type UploadResult = { name: string; state: 'pending' | 'uploading' | 'saved' | 'duplicate' | 'failed'; message?: string }
@@ -12,12 +13,15 @@ const fileProblem = (file: File) => file.size > maxBytes ? 'Supera los 10 MB.'
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'No se pudo guardar el cambio. Vuelve a intentarlo.'
 
 function ImagePreview({ image, full = false }: { image: CampaignImage; full?: boolean }) {
+  const { api: { campaignImageUrl } } = useProducts()
   const [failed, setFailed] = useState(false)
   return failed ? <span className="campaign-images-preview-error"><AlertTriangle aria-hidden="true" />No se puede mostrar. Puedes descargar o sustituir esta imagen.</span>
     : <img src={campaignImageUrl(image, full ? 'preview' : 'thumbnail')} alt={image.fileName} loading={full ? 'eager' : 'lazy'} onError={() => setFailed(true)} />
 }
 
 export function CampaignImages({ csrfToken }: { csrfToken: string }) {
+  const { api: workflowApi, product } = useProducts()
+  const { campaignImageUrl } = workflowApi
   const [images, setImages] = useState<CampaignImage[]>([])
   const [state, setState] = useState<'loading' | 'ready' | 'unavailable' | 'error'>('loading')
   const [filter, setFilter] = useState<'all' | 'active' | 'inactive'>('all')
@@ -49,7 +53,7 @@ export function CampaignImages({ csrfToken }: { csrfToken: string }) {
       setState('error')
       setError(errorMessage(caught))
     }
-  }, [])
+  }, [workflowApi])
 
   useEffect(() => {
     alive.current = true
@@ -155,7 +159,9 @@ export function CampaignImages({ csrfToken }: { csrfToken: string }) {
       <input ref={uploadRef} hidden aria-label="Seleccionar imágenes desde tus carpetas" type="file" multiple accept="image/png,image/jpeg,image/webp" disabled={busy || unavailable} onChange={(event) => { void uploadFiles(Array.from(event.target.files || [])); event.target.value = '' }} />
     </header>
 
-    <p className="campaign-images-scope">Lista compartida por todas las campañas. Cada correo usa una imagen activa. Los cambios se aplican a los próximos envíos, también en campañas en marcha.</p>
+    <p className="campaign-images-scope">{product.status === 'preparing'
+      ? 'Biblioteca propia de DECA. La selección se guarda para futuras campañas; los envíos siguen pendientes de configuración.'
+      : 'Lista compartida por todas las campañas de Ficharia. Cada correo usa una imagen activa. Los cambios se aplican a los próximos envíos, también en campañas en marcha.'}</p>
     <div className="campaign-images-feedback" aria-live="polite" role="status">{message && <p><Check aria-hidden="true" />{message}</p>}</div>
     {error && <p className="campaign-images-error" role="alert"><AlertTriangle aria-hidden="true" />{error}</p>}
 

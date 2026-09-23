@@ -1,4 +1,6 @@
 import { basename } from 'node:path'
+import { resolveProduct } from './products.mjs'
+import { CAMPAIGN_WEBHOOK_TIMEOUT_MS } from '../shared/campaign-timeouts.mjs'
 
 const isProduction = process.env.NODE_ENV === 'production'
 const webhookPath = process.env.N8N_PROSPECTING_WEBHOOK_PATH?.trim() || '/webhook/ficharia/campanas'
@@ -47,7 +49,8 @@ export function campaignWebhookConfigured() {
   return Boolean(campaignWebhook)
 }
 
-export async function launchCampaign({ file, prompt, source, validContacts }) {
+export async function launchCampaign({ file, prompt, source, validContacts, campaign_id, productId = 'ficharia' }) {
+  resolveProduct(productId, 'campaigns')
   if (!campaignWebhook) {
     const error = new Error('El webhook de campañas de n8n todavía no está configurado.')
     error.code = 'N8N_NOT_CONFIGURED'
@@ -59,6 +62,7 @@ export async function launchCampaign({ file, prompt, source, validContacts }) {
   form.append('prompt', prompt)
   form.append('source', source)
   form.append('validContacts', String(validContacts))
+  if (campaign_id) form.append('campaign_id', campaign_id)
 
   const headers = { Accept: 'application/json' }
   if (process.env.N8N_WEBHOOK_AUTH_TOKEN?.trim()) {
@@ -70,7 +74,7 @@ export async function launchCampaign({ file, prompt, source, validContacts }) {
     headers,
     body: form,
     redirect: 'manual',
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(CAMPAIGN_WEBHOOK_TIMEOUT_MS),
   })
   const payload = await responsePayload(response)
   if (!response.ok) {

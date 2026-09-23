@@ -1,3 +1,4 @@
+import { ProductsProvider, ProductSelector } from './components/ProductsProvider'
 import {
   AtSign,
   Eye,
@@ -280,10 +281,12 @@ function App() {
         />
       ) : (
         <>
+          <ProductsProvider>
           <a className="skip-link" href="#garaje">Saltar al garaje</a>
           <div className="app-shell">
             <header className="topbar">
               <GarageMark />
+              <ProductSelector />
               <div className="topbar-actions">
                 <button className="topbar-icon" type="button" onClick={() => setArcadeOpen(true)} aria-label="Abrir recreativa" title="Recreativa"><Gamepad2 /></button>
                 {authenticatedUser?.role === 'admin' && (
@@ -341,6 +344,7 @@ function App() {
               onCurrentUserChange={(user) => setSessionState((current) => current ? { ...current, user } : current)}
             />
           )}
+          </ProductsProvider>
         </>
       )}
       {sessionMessage && (

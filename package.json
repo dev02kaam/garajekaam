@@ -11,6 +11,7 @@
     "lint": "eslint .",
     "test:security": "node --env-file-if-exists=.env scripts/security-smoke.mjs",
     "test:sessions": "node --test scripts/test-sessions.mjs",
+    "test:campaign-requests": "node --test scripts/test-campaign-requests.mjs",
     "test:followups": "node --test scripts/test-followups.mjs",
     "test:campaign-images": "node --test scripts/test-campaign-images.mjs",
     "db:campaign-images": "node --env-file-if-exists=.env scripts/migrate-campaign-images.mjs",
@@ -18,7 +19,9 @@
     "db:state": "node --env-file=.env scripts/inspect-ficharia-state.mjs",
     "preview": "vite preview",
     "start": "cross-env NODE_ENV=production node --env-file-if-exists=.env server/index.mjs",
-    "user:init": "node --env-file-if-exists=.env scripts/create-admin.mjs"
+    "user:init": "node --env-file-if-exists=.env scripts/create-admin.mjs",
+    "db:products": "node --env-file-if-exists=.env scripts/migrate-products.mjs",
+    "test:products": "node --test scripts/test-products.mjs"
   },
   "dependencies": {
     "@fontsource/atkinson-hyperlegible": "^5.2.6",

@@ -1,4 +1,5 @@
-import { request } from './auth'
+import { request as rawRequest, type ApiRequestInit } from './auth'
+import { CAMPAIGN_REQUEST_TIMEOUT_MS } from '../shared/campaign-timeouts.mjs'
 
 export type WorkflowCampaign = {
   id: string
@@ -181,32 +182,43 @@ export type CampaignImage = {
   revision: string
 }
 
-export const campaignImageUrl = (image: CampaignImage, mode: 'thumbnail' | 'download' | 'preview' = 'thumbnail') =>
-  `/api/workflows/campaign-images/${encodeURIComponent(image.id)}/file?v=${image.sha256}${mode === 'preview' ? '' : `&${mode}=1`}`
-
-export const workflowApi = {
-  campaignImages: (signal?: AbortSignal) => request<{ available: boolean; images: CampaignImage[] }>('/api/workflows/campaign-images', { signal }),
+export function createWorkflowApi(productId: string, scopeSignal: AbortSignal, beginMutation: () => () => void) {
+  const base = '/api/products/' + encodeURIComponent(productId) + '/workflows'
+  async function request<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
+    scopeSignal.throwIfAborted()
+    const release = init.method && init.method !== 'GET' ? beginMutation() : () => {}
+    try {
+      const signal = init.signal ? AbortSignal.any([scopeSignal, init.signal]) : scopeSignal
+      const result = await rawRequest<T>(path, { ...init, signal })
+      signal.throwIfAborted()
+      return result
+    } finally { release() }
+  }
+  return {
+  campaignImageUrl: (image: CampaignImage, mode: 'thumbnail' | 'download' | 'preview' = 'thumbnail') =>
+    base + '/campaign-images/' + encodeURIComponent(image.id) + '/file?v=' + image.sha256 + (mode === 'preview' ? '' : '&' + mode + '=1'),
+  campaignImages: (signal?: AbortSignal) => request<{ available: boolean; images: CampaignImage[] }>(base + '/campaign-images', { signal }),
   uploadCampaignImage: (file: File, csrfToken: string, signal?: AbortSignal) => {
     const form = new FormData()
     form.append('image', file)
-    return request<{ image: CampaignImage; duplicate: boolean }>('/api/workflows/campaign-images', {
+    return request<{ image: CampaignImage; duplicate: boolean }>(base + '/campaign-images', {
       method: 'POST', headers: { 'X-CSRF-Token': csrfToken }, body: form, signal,
     })
   },
-  setCampaignImageActive: (image: CampaignImage, active: boolean, csrfToken: string) => request<{ image: CampaignImage }>(`/api/workflows/campaign-images/${encodeURIComponent(image.id)}`, {
+  setCampaignImageActive: (image: CampaignImage, active: boolean, csrfToken: string) => request<{ image: CampaignImage }>(`${base}/campaign-images/${encodeURIComponent(image.id)}`, {
     method: 'PATCH', headers: { 'X-CSRF-Token': csrfToken }, body: JSON.stringify({ active, revision: image.revision }),
   }),
   replaceCampaignImage: (image: CampaignImage, file: File, csrfToken: string) => {
     const form = new FormData()
     form.append('image', file)
     form.append('revision', image.revision)
-    return request<{ image: CampaignImage }>(`/api/workflows/campaign-images/${encodeURIComponent(image.id)}`, {
+    return request<{ image: CampaignImage }>(`${base}/campaign-images/${encodeURIComponent(image.id)}`, {
       method: 'PUT', headers: { 'X-CSRF-Token': csrfToken }, body: form,
     })
   },
-  config: () => request<{ campaignWebhookConfigured: boolean }>('/api/workflows/config'),
-  jobs: (limit = 100) => request<{ available: boolean; jobs: WorkflowJob[] }>(`/api/workflows/jobs?limit=${limit}`),
-  campaigns: (limit = 100) => request<{ available: boolean; campaigns: WorkflowCampaign[] }>(`/api/workflows/campaigns?limit=${limit}`),
+  config: () => request<{ campaignWebhookConfigured: boolean }>(base + '/config'),
+  jobs: (limit = 100) => request<{ available: boolean; jobs: WorkflowJob[] }>(`${base}/jobs?limit=${limit}`),
+  campaigns: (limit = 100) => request<{ available: boolean; campaigns: WorkflowCampaign[] }>(`${base}/campaigns?limit=${limit}`),
   campaignContacts: (
     campaignId: string,
     options: { limit?: number; offset?: number; query?: string; status?: 'all' | 'sent' | 'pending' | 'issues' | 'not-selected' } = {},
@@ -218,16 +230,19 @@ export const workflowApi = {
       status: options.status ?? 'all',
     })
     return request<{ available: boolean; total: number; contacts: WorkflowCampaignContact[] }>(
-      `/api/workflows/campaigns/${encodeURIComponent(campaignId)}/contacts?${params}`,
+      `${base}/campaigns/${encodeURIComponent(campaignId)}/contacts?${params}`,
     )
   },
-  conversations: (limit = 100) => request<{ available: boolean; conversations: WorkflowConversation[] }>(`/api/workflows/conversations?limit=${limit}`),
-  conversationEmail: (emailId: string) => request<{ available: boolean; email: WorkflowConversationEmail | null }>(`/api/workflows/conversations/emails/${encodeURIComponent(emailId)}`),
-  followups: (limit = 100, signal?: AbortSignal) => request<{ available: boolean; conversations: WorkflowFollowupConversation[] }>(`/api/workflows/followups?limit=${limit}`, { signal }),
-  creatives: (limit = 100) => request<{ available: boolean; assets: WorkflowCreative[] }>(`/api/workflows/creatives?limit=${limit}`),
-  launchCampaign: (form: FormData, csrfToken: string) => request<Record<string, unknown>>('/api/workflows/campaigns/launch', {
+  conversations: (limit = 100) => request<{ available: boolean; conversations: WorkflowConversation[] }>(`${base}/conversations?limit=${limit}`),
+  conversationEmail: (emailId: string) => request<{ available: boolean; email: WorkflowConversationEmail | null }>(`${base}/conversations/emails/${encodeURIComponent(emailId)}`),
+  followups: (limit = 100, signal?: AbortSignal) => request<{ available: boolean; conversations: WorkflowFollowupConversation[] }>(`${base}/followups?limit=${limit}`, { signal }),
+  creatives: (limit = 100) => request<{ available: boolean; assets: WorkflowCreative[] }>(`${base}/creatives?limit=${limit}`),
+  launchCampaign: (form: FormData, csrfToken: string) => request<Record<string, unknown>>(base + '/campaigns/launch', {
     method: 'POST',
     headers: { 'X-CSRF-Token': csrfToken },
     body: form,
+    timeoutMs: CAMPAIGN_REQUEST_TIMEOUT_MS,
   }),
+}
+
 }

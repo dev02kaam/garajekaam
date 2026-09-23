@@ -50,12 +50,14 @@ export class ApiError extends Error {
   }
 }
 
-export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+export type ApiRequestInit = RequestInit & { timeoutMs?: number }
+
+export async function request<T>(path: string, { timeoutMs = 10_000, ...init }: ApiRequestInit = {}): Promise<T> {
   const generation = requestGeneration
   const headers = new Headers(init.headers)
   headers.set('Accept', 'application/json')
   if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json')
-  const timeout = AbortSignal.timeout(10_000)
+  const timeout = AbortSignal.timeout(timeoutMs)
   const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout
 
   try {
@@ -68,10 +70,14 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
     return payload as T
   } catch (caught) {
     if (init.signal?.aborted || generation !== requestGeneration) throw caught
-    const error = caught instanceof ApiError ? caught : new ApiError(0, {
-      code: 'NETWORK_ERROR', message: 'No se puede conectar con el servidor. El acceso está bloqueado hasta verificar la sesión.',
+    const error = timeout.aborted ? new ApiError(0, {
+      code: 'REQUEST_TIMEOUT', message: 'El servidor ha tardado demasiado en responder.',
+    }) : caught instanceof ApiError ? caught : new ApiError(0, {
+      code: 'NETWORK_ERROR', message: 'No se pudo conectar con el servidor.',
     })
-    if (error.status === 0 || error.status >= 500 || (error.status === 401 && error.code !== 'INVALID_CREDENTIALS') || error.code === 'INVALID_CSRF') {
+    // An operation failure does not invalidate authentication. Session checks and
+    // browser offline events still lock private views through useSession.
+    if ((error.status === 401 && error.code !== 'INVALID_CREDENTIALS') || error.code === 'INVALID_CSRF') {
       window.dispatchEvent(new CustomEvent(SESSION_FAILURE_EVENT, { detail: error }))
     }
     throw error

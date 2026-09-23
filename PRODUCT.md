@@ -41,6 +41,16 @@ Los workflows no aparecen como diagramas abstractos, sino como personajes que tr
 - Debe ser responsive, accesible por teclado y usable con movimiento reducido.
 - No se inventarán métricas comerciales reales; toda métrica inicial se etiqueta como demostración.
 
+## Contexto de producto
+
+- El catálogo definido en código contiene Ficharia y **DECA · Una app de Kaam**. Ficharia es la selección inicial; la barra superior y todos los dashboards comparten el mismo producto seleccionado.
+- Cambiar de producto conserva la pestaña de trabajo y recupera los borradores propios de ese producto: CSV, instrucción de campaña, prompt creativo, referencia y correo de revisión. Estos datos viven solo en memoria durante la sesión de la aplicación; no son borradores persistidos ni se conservan al recargar o cerrar sesión.
+- Una escritura en curso bloquea temporalmente el cambio de producto y muestra «Guardando…». Las consultas del contexto anterior se cancelan al cambiar.
+- DECA permanece **Bajo construcción**, pendiente de la información del producto. Permite preparar borradores y organizar su biblioteca propia de imágenes; campañas, respuestas, seguimientos, generación y revisión automatizada todavía no están habilitados.
+- Ficharia conserva los arreglos de campañas y del formulario. Su demo y demo personalizada comparten temporalmente el vídeo https://youtu.be/WpOQs9Bdn94, registrado en el catálogo y en `flujoficharia`.
+- Cada producto tiene una biblioteca de imágenes independiente. La lista compartida de Ficharia se comparte entre sus campañas; la selección de DECA se guarda para futuras campañas y no afecta a Ficharia ni activa envíos.
+- La identidad de DECA es textual. La selección de producto conserva la estética y las temáticas existentes del garaje.
+
 ## Brand Commitments
 
 - Nombre provisional autorizado por delegación creativa: **Garaje Kaam**.

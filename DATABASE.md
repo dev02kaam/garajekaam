@@ -4,6 +4,12 @@ Garaje Kaam usa la misma base PostgreSQL que los workflows de Ficharia, pero sep
 
 - `public`: tablas, funciones y vistas operativas de Ficharia.
 - `garaje_kaam`: usuarios y sesiones de la aplicación.
+- `garaje_deca`: biblioteca independiente de imágenes de DECA, pendiente de automatizaciones.
+
+El contrato multiproducto y su orden de actualización se documentan en
+[MULTIPRODUCTO.md](MULTIPRODUCTO.md). La migración aditiva de DECA se aplica antes
+de desplegar el Garaje con `npm run db:products`; no se ejecuta automáticamente
+al iniciar ni copia tablas operativas de Ficharia.
 
 Al arrancar, el servidor crea de forma idempotente `garaje_kaam.users` y `garaje_kaam.user_sessions`. Si la tabla de usuarios está vacía, las variables `KAAM_INITIAL_ADMIN_*` crean una única cuenta administradora bajo un bloqueo transaccional.
 
@@ -65,7 +71,8 @@ actualización. No cambia los archivos ni su selección. El equivalente SQL est�
 `flujoficharia/sql/009_ficharia_campaign_image_management.sql`; las instalaciones
 nuevas lo incluyen desde `008_ficharia_campaign_email_assets.sql`.
 
-Contrato bajo `/api/workflows/campaign-images`:
+Contrato bajo `/api/products/:productId/workflows/campaign-images`; la ruta
+`/api/workflows/campaign-images` permanece como compatibilidad exclusiva de Ficharia:
 
 | Método y ruta | Operación |
 | --- | --- |

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-14T11:58:30.675Z",
+  "generatedAt": "2026-09-22T10:55:27.736Z",
   "title": "Design System: Kaam Garage",
   "extensions": {
     "colorMeta": {
@@ -401,6 +401,10 @@
       {
         "name": "campaign-images-one-column",
         "value": "500px"
+      },
+      {
+        "name": "product-selector-wrap",
+        "value": "640px"
       }
     ]
   },
@@ -480,6 +484,20 @@
       "description": "Filtros con conteo y selección visible, junto a búsqueda por nombre; los filtros pasan a una fila propia en móvil.",
       "html": "<div class=\"ds-campaign-toolbar\"><div class=\"ds-campaign-filters\" role=\"group\" aria-label=\"Filtrar imágenes\"><button type=\"button\" aria-pressed=\"true\">Todas <span>2</span></button><button type=\"button\" aria-pressed=\"false\">En uso <span>1</span></button><button type=\"button\" aria-pressed=\"false\">Sin usar <span>1</span></button></div><label class=\"ds-campaign-search\"><svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/></svg><input type=\"search\" aria-label=\"Buscar imágenes por nombre\" placeholder=\"Buscar por nombre\"/></label></div>",
       "css": ".ds-campaign-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:12px;color:#101416;font-family:'Atkinson Hyperlegible',Arial,sans-serif;}.ds-campaign-filters{display:flex;gap:2px;}.ds-campaign-filters button{display:inline-flex;min-height:44px;align-items:center;justify-content:center;gap:8px;padding:8px 14px;border:1px solid #8e887c;border-radius:0;color:#101416;background:transparent;font-family:'Atkinson Hyperlegible',Arial,sans-serif;font-size:.9rem;font-weight:700;cursor:pointer;padding-inline:10px;border-color:transparent;}.ds-campaign-filters button:hover{background:#d6d0c3;}.ds-campaign-filters button[aria-pressed=\"true\"]{color:var(--paper,#f3efe4);background:#101416;}.ds-campaign-filters button[aria-pressed=\"true\"]:hover{background:#353a3c;}.ds-campaign-filters span{font-size:.78rem;font-variant-numeric:tabular-nums;}.ds-campaign-search{display:flex;flex:1;min-width:180px;align-items:center;gap:8px;margin-left:auto;padding:0 12px;border:1px solid #8e887c;background:var(--paper,#f3efe4);}.ds-campaign-search svg{width:19px;height:19px;flex-shrink:0;}.ds-campaign-search input{width:100%;min-width:0;height:44px;border:0;border-radius:0;color:#101416;background:transparent;font-family:'Atkinson Hyperlegible',Arial,sans-serif;font-size:.9rem;}.ds-campaign-search input::placeholder{color:#635b4e;}.ds-campaign-toolbar :is(button,input):focus-visible{outline:3px solid #665119;outline-offset:3px;}@media(max-width:500px){.ds-campaign-toolbar{gap:10px;}.ds-campaign-filters{width:100%;}.ds-campaign-filters button{flex:1;}.ds-campaign-search{min-width:0;}}"
+    },
+    {
+      "name": "Product Selector",
+      "kind": "input",
+      "description": "Selector nativo compartido por el garaje y los dashboards; durante una escritura se deshabilita y anuncia Guardando?.",
+      "html": "<label class=\"ds-product-selector\"><span>Producto</span><select aria-label=\"Producto\"><option>Ficharia</option><option>DECA ? Una app de Kaam</option></select></label>",
+      "css": ".ds-product-selector{display:flex;align-items:center;gap:8px;color:var(--paper-dim,#c9c3b5);font-family:\"Atkinson Hyperlegible\",Arial,sans-serif;font-size:.85rem;min-width:0}.ds-product-selector select{min-height:44px;max-width:260px;min-width:0;padding:8px 30px 8px 12px;border:1px solid var(--line,rgba(243,239,228,.18));border-radius:0;background:var(--ink-2,#111a20);color:var(--paper,#f3efe4);font:inherit;cursor:pointer}.ds-product-selector select:focus-visible{outline:2px solid var(--focus,#fff1a8);outline-offset:3px}.ds-product-selector select:disabled{opacity:.65;cursor:wait}@media(max-width:640px){.ds-product-selector{width:100%;justify-content:space-between}.ds-product-selector select{flex:1;max-width:none}}"
+    },
+    {
+      "name": "Product Availability",
+      "kind": "custom",
+      "description": "Estado informativo de preparaci?n debajo de la cabecera, con alcance expl?cito de las acciones.",
+      "html": "<p class=\"ds-product-availability\" role=\"status\"><strong>DECA ? Una app de Kaam ? Pendiente de configuraci?n</strong><span>Puedes preparar borradores y organizar im?genes. Campa?as, respuestas, seguimiento y generaci?n a?n no est?n habilitados.</span></p>",
+      "css": ".ds-product-availability{display:grid;gap:5px;margin:0;padding:14px 24px;color:var(--paper-dim,#c9c3b5);background:var(--ink-2,#111a20);border-bottom:1px solid var(--line,rgba(243,239,228,.18));font-family:\"Atkinson Hyperlegible\",Arial,sans-serif;font-size:.9rem;line-height:1.45}.ds-product-availability strong{color:var(--paper,#f3efe4)}"
     }
   ],
   "narrative": {
@@ -522,6 +540,11 @@
         "name": "The Square Workshop Rule",
         "body": "Si un componente no representa identidad, estado o tiempo, conserva esquinas rectas.",
         "section": "shapes"
+      },
+      {
+        "name": "The Shared Product Context Rule",
+        "body": "El nombre seleccionado identifica el contexto de trabajo en todos los puestos; el estado y las acciones disponibles se explican con texto. DECA conserva identidad textual y no introduce otro logotipo, color de marca ni tema de personaje.",
+        "section": "components"
       }
     ],
     "dos": [

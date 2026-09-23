@@ -1,3 +1,5 @@
+import { useProducts, useProductMemory } from '../productContext'
+import { ProductSelector, ProductAvailability } from './ProductsProvider'
 import {
   Activity,
   AlertTriangle,
@@ -21,12 +23,12 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
+import { ApiError } from '../auth'
 import { CampaignImages } from './CampaignImages'
 import marketingAgriculture from '../assets/marketing-agriculture-automation.webp'
 import marketingCreativeStudio from '../assets/marketing-creative-studio.webp'
 import marketingWinery from '../assets/marketing-winery-followup.webp'
 import {
-  workflowApi,
   type WorkflowCampaign,
   type WorkflowCampaignContact,
   type WorkflowConversation,
@@ -56,7 +58,7 @@ type PromptHistoryItem = {
   prompt: string
   filename: string
   createdAt: string
-  status: 'pending' | 'sent' | 'failed'
+  status: 'pending' | 'sent' | 'failed' | 'unconfirmed'
   csvRows?: number
   csvValid?: number
 }
@@ -581,6 +583,9 @@ function ModalShell({ agent, onClose, children }: DashboardModalProps & { childr
   const closeRef = useRef<HTMLButtonElement>(null)
   const modalRef = useRef<HTMLElement>(null)
   const previousFocus = useRef<HTMLElement | null>(null)
+  const onCloseRef = useRef(onClose)
+
+  useEffect(() => { onCloseRef.current = onClose }, [onClose])
 
   useEffect(() => {
     if (!agent) return
@@ -588,7 +593,7 @@ function ModalShell({ agent, onClose, children }: DashboardModalProps & { childr
     closeRef.current?.focus()
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        onClose()
+        onCloseRef.current()
         return
       }
       if (event.key !== 'Tab') return
@@ -640,7 +645,7 @@ function ModalShell({ agent, onClose, children }: DashboardModalProps & { childr
       window.removeEventListener('keydown', onKeyDown)
       previousFocus.current?.focus()
     }
-  }, [agent, onClose])
+  }, [agent])
 
   if (!agent) return null
 
@@ -667,11 +672,13 @@ function ModalShell({ agent, onClose, children }: DashboardModalProps & { childr
             <h2 id="dashboard-title">{labels[agent].title}</h2>
           </div>
           <div className="dashboard-header-actions">
+            <ProductSelector />
             <button ref={closeRef} className="icon-button" type="button" onClick={onClose} aria-label="Cerrar panel">
               <X aria-hidden="true" />
             </button>
           </div>
         </header>
+        <ProductAvailability />
         {children}
       </section>
     </div>
@@ -679,19 +686,22 @@ function ModalShell({ agent, onClose, children }: DashboardModalProps & { childr
 }
 
 function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
+  const { api: workflowApi, product, signal } = useProducts()
+  const isFicharia = product.id === 'ficharia'
   const prepareTabRef = useRef<HTMLButtonElement>(null)
   const activityTabRef = useRef<HTMLButtonElement>(null)
   const campaignHistoryTabRef = useRef<HTMLButtonElement>(null)
   const campaignImagesTabRef = useRef<HTMLButtonElement>(null)
-  const [summary, setSummary] = useState<CsvSummary | null>(null)
-  const [csvFile, setCsvFile] = useState<File | null>(null)
-  const [prompt, setPrompt] = useState('')
-  const [history, setHistory] = useState<PromptHistoryItem[]>([])
+  const [summary, setSummary] = useProductMemory<CsvSummary | null>('campaign-summary', null)
+  const [csvFile, setCsvFile] = useProductMemory<File | null>('campaign-csv', null)
+  const [prompt, setPrompt] = useProductMemory('campaign-prompt', '')
+  const [submission, setSubmission] = useProductMemory<{ file: File; prompt: string; id: string } | null>('campaign-submission', null)
+  const [history, setHistory] = useProductMemory<PromptHistoryItem[]>('campaign-history', [])
   const [error, setError] = useState('')
   const [dragging, setDragging] = useState(false)
-  const [activeTab, setActiveTab] = useState<'prepare' | 'activity' | 'history' | 'images'>('prepare')
+  const [activeTab, setActiveTab] = useProductMemory<'prepare' | 'activity' | 'history' | 'images'>('prospecto-tab', 'prepare', true)
   const [campaignQuery, setCampaignQuery] = useState('')
-  const [selectedCampaignId, setSelectedCampaignId] = useState(demoCampaigns[0].id)
+  const [selectedCampaignId, setSelectedCampaignId] = useState(isFicharia ? demoCampaigns[0].id : '')
   const [databaseCampaigns, setDatabaseCampaigns] = useState<CampaignHistoryItem[]>([])
   const [campaignDataState, setCampaignDataState] = useState<WorkflowDataState>('loading')
   const [campaignWebhookReady, setCampaignWebhookReady] = useState(false)
@@ -724,7 +734,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
         setRun((current) => current.state === 'idle' ? { ...current, message: 'No se pudo comprobar la conexión con n8n.' } : current)
       })
     return () => { active = false }
-  }, [])
+  }, [workflowApi])
 
   useEffect(() => {
     let active = true
@@ -765,7 +775,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
       window.removeEventListener('focus', refreshWhenVisible)
       document.removeEventListener('visibilitychange', refreshWhenVisible)
     }
-  }, [])
+  }, [workflowApi])
 
   const readCsv = (file?: File) => {
     setError('')
@@ -788,6 +798,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
     }
     const reader = new FileReader()
     reader.onload = () => {
+      if (signal.aborted) return
       const text = String(reader.result ?? '').trim()
       const lines = text.split(/\r?\n/).filter(Boolean)
       if (lines.length < 2) {
@@ -809,6 +820,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
       setSummary({ filename: file.name, rows: rows.length, valid, issues: rows.length - valid, columns })
     }
     reader.onerror = () => {
+      if (signal.aborted) return
       setCsvFile(null)
       setSummary(null)
       setError('No hemos podido leer el archivo. Comprueba que no esté dañado.')
@@ -831,10 +843,13 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
   }
 
   const launchWorkflow = async () => {
+    if (!product.capabilities.campaigns || signal.aborted || run.state === 'sending') return
     const cleanPrompt = prompt.trim()
     if (!csvFile || !summary || summary.valid === 0 || !cleanPrompt) return
 
-    const historyId = `${Date.now()}-${csvFile.name}`
+    const historyId = submission?.file === csvFile && submission.prompt === cleanPrompt
+      ? submission.id : crypto.randomUUID()
+    setSubmission({ file: csvFile, prompt: cleanPrompt, id: historyId })
     const createdAt = new Date().toISOString()
     const historyItem: PromptHistoryItem = {
       id: historyId,
@@ -845,7 +860,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
       csvRows: summary.rows,
       csvValid: summary.valid,
     }
-    setHistory((items) => [historyItem, ...items].slice(0, 8))
+    setHistory((items) => [historyItem, ...items.filter(item => item.id !== historyId)].slice(0, 8))
     setError('')
     setActiveTab('activity')
 
@@ -867,6 +882,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
       body.append('prompt', cleanPrompt)
       body.append('source', 'garaje-kaam')
       body.append('validContacts', String(summary.valid))
+      body.append('campaign_id', historyId)
 
       const payload = await workflowApi.launchCampaign(body, csrfToken)
       const data = payload
@@ -876,7 +892,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
 
       const remoteStatus = String(data?.status ?? data?.state ?? 'accepted').toLowerCase()
       const completed = ['complete', 'completed', 'finished', 'success', 'succeeded'].includes(remoteStatus)
-      const executionId = data?.executionId ?? data?.execution_id ?? data?.id
+      const executionId = data?.executionId ?? data?.execution_id ?? data?.job_id ?? data?.campaign_id ?? data?.id
       updateHistoryStatus(historyId, 'sent')
       setRun({
         state: completed ? 'completed' : 'accepted',
@@ -885,16 +901,20 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
         executionId: executionId == null ? undefined : String(executionId),
       })
     } catch (requestError) {
-      const message = requestError instanceof Error
+      const unconfirmed = requestError instanceof ApiError && (requestError.status === 0 || requestError.status >= 500)
+        && !['N8N_NOT_CONFIGURED', 'PRODUCT_NOT_READY'].includes(requestError.code)
+      const message = unconfirmed
+        ? 'No se pudo confirmar la recepción de la campaña. Puede seguir procesándose; comprueba el historial antes de volver a enviarla. El CSV y la instrucción se conservan en Preparar.'
+        : requestError instanceof Error
           ? requestError.message
           : 'No se pudo contactar con n8n.'
-      updateHistoryStatus(historyId, 'failed')
+      updateHistoryStatus(historyId, unconfirmed ? 'unconfirmed' : 'failed')
       setRun({ state: 'failed', message, updatedAt: new Date().toISOString() })
     }
   }
 
   const hasPrompt = prompt.trim().length > 0
-  const canLaunch = Boolean(csvFile && summary && summary.valid > 0 && hasPrompt && run.state !== 'sending')
+  const canLaunch = Boolean(product.capabilities.campaigns && csvFile && summary && summary.valid > 0 && hasPrompt && run.state !== 'sending')
   const n8nStepState = run.state === 'sending'
     ? 'active'
     : run.state === 'accepted' || run.state === 'completed'
@@ -918,7 +938,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
     csvRows: item.csvRows ?? null,
     csvValid: item.csvValid ?? null,
     prompt: item.prompt,
-    status: item.status === 'pending' ? 'running' : item.status === 'failed' ? 'failed' : 'pending-data',
+    status: item.status === 'pending' ? 'running' : item.status === 'failed' ? 'failed' : item.status === 'unconfirmed' ? 'needs-review' : 'pending-data',
     workflowStatus: null,
     updatedAt: item.createdAt,
     completedAt: null,
@@ -940,7 +960,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
   }))
   const campaigns = [
     ...unresolvedLocalCampaigns,
-    ...(campaignDataState === 'postgres' ? databaseCampaigns : demoCampaigns),
+    ...(campaignDataState === 'postgres' ? databaseCampaigns : isFicharia ? demoCampaigns : []),
   ]
   const normalizedCampaignQuery = campaignQuery.trim().toLocaleLowerCase('es')
   const filteredCampaigns = campaigns.filter((campaign) => (
@@ -992,7 +1012,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
       active = false
       window.clearTimeout(timer)
     }
-  }, [activeTab, campaignContactFilter, campaignContactPage, campaignContactQuery, selectedCampaignDatabaseId])
+  }, [workflowApi, activeTab, campaignContactFilter, campaignContactPage, campaignContactQuery, selectedCampaignDatabaseId])
 
   const campaignStatusLabels: Record<CampaignHistoryItem['status'], string> = {
     completed: 'Finalizada',
@@ -1159,6 +1179,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
           </div>
           <textarea
             className="campaign-prompt"
+            aria-labelledby="prompt-section-title"
             value={prompt}
             onChange={(event) => setPrompt(event.target.value.slice(0, 1200))}
             rows={5}
@@ -1182,7 +1203,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
 
         <div className={`run-callout is-${run.state}`}>
           <span className="run-light" />
-          <div><strong>{run.state === 'idle' ? 'Listo para preparar' : run.state === 'sending' ? 'Conectando con n8n' : run.state === 'accepted' ? 'Workflow arrancado' : run.state === 'completed' ? 'Trabajo finalizado' : 'No se ha podido iniciar'}</strong><p>{run.message}</p></div>
+          <div><strong>{run.state === 'idle' ? 'Listo para preparar' : run.state === 'sending' ? 'Conectando con n8n' : run.state === 'accepted' ? 'Workflow arrancado' : run.state === 'completed' ? 'Trabajo finalizado' : 'Revisar envío'}</strong><p>{run.message}</p></div>
         </div>
 
         <ol className="workflow-steps">
@@ -1607,13 +1628,15 @@ function BardoWorkflowProgress({ steps, label }: { steps: BardoWorkflowStep[]; l
 }
 
 function BardoDashboard() {
+  const { api: workflowApi, product } = useProducts()
+  const isFicharia = product.id === 'ficharia'
   const liveTabRef = useRef<HTMLButtonElement>(null)
   const historyTabRef = useRef<HTMLButtonElement>(null)
-  const [activeTab, setActiveTab] = useState<'live' | 'history'>('live')
+  const [activeTab, setActiveTab] = useProductMemory<'live' | 'history'>('bardo-tab', 'live', true)
   const [query, setQuery] = useState('')
-  const [selectedConversationId, setSelectedConversationId] = useState(bardoConversations[0].id)
-  const [selectedEmailId, setSelectedEmailId] = useState(bardoConversations[0].emails[0].id)
-  const [conversations, setConversations] = useState<BardoConversation[]>(bardoConversations)
+  const [selectedConversationId, setSelectedConversationId] = useState(isFicharia ? bardoConversations[0].id : '')
+  const [selectedEmailId, setSelectedEmailId] = useState(isFicharia ? bardoConversations[0].emails[0].id : '')
+  const [conversations, setConversations] = useState<BardoConversation[]>(isFicharia ? bardoConversations : [])
   const [conversationDataState, setConversationDataState] = useState<WorkflowDataState>('loading')
   const [conversationRefreshVersion, setConversationRefreshVersion] = useState(0)
   const [emailDetails, setEmailDetails] = useState<Record<string, WorkflowConversationEmail>>({})
@@ -1660,7 +1683,7 @@ function BardoDashboard() {
       document.removeEventListener('visibilitychange', refreshWhenVisible)
       window.removeEventListener('focus', refreshWhenVisible)
     }
-  }, [])
+  }, [workflowApi])
 
   useEffect(() => {
     if (conversationDataState !== 'postgres') return
@@ -1732,7 +1755,7 @@ function BardoDashboard() {
       })
       .catch(() => active && setEmailDetailRequest({ id: emailId, state: 'error' }))
     return () => { active = false }
-  }, [conversationDataState, conversationRefreshVersion, selectedEmail?.id])
+  }, [workflowApi, conversationDataState, conversationRefreshVersion, selectedEmail?.id])
 
   const selectedIncoming = selectedEmail && selectedConversation ? {
     fromEmail: selectedEmailDetail?.incoming.fromEmail || selectedEmail.incoming?.fromEmail || selectedConversation.email,
@@ -1973,9 +1996,10 @@ function BardoDashboard() {
 }
 
 function BucleDashboard() {
+  const { api: workflowApi } = useProducts()
   const queueTabRef = useRef<HTMLButtonElement>(null)
   const historyTabRef = useRef<HTMLButtonElement>(null)
-  const [activeTab, setActiveTab] = useState<'queue' | 'history'>('queue')
+  const [activeTab, setActiveTab] = useProductMemory<'queue' | 'history'>('bucle-tab', 'queue', true)
   const [query, setQuery] = useState('')
   const [selectedConversationId, setSelectedConversationId] = useState('')
   const [conversations, setConversations] = useState<BucleConversation[]>([])
@@ -2017,7 +2041,7 @@ function BucleDashboard() {
       document.removeEventListener('visibilitychange', refreshWhenVisible)
       window.removeEventListener('focus', refreshWhenVisible)
     }
-  }, [refreshVersion])
+  }, [workflowApi, refreshVersion])
 
   const waitingConversations = conversations.filter((conversation) => ['waiting', 'generating', 'sending'].includes(conversation.state))
   const normalizedQuery = query.trim().toLocaleLowerCase('es')
@@ -2207,27 +2231,35 @@ function BucleDashboard() {
 }
 
 function MarketingDashboard() {
+  const { api: workflowApi, product, signal } = useProducts()
+  const isFicharia = product.id === 'ficharia'
   const createTabRef = useRef<HTMLButtonElement>(null)
   const libraryTabRef = useRef<HTMLButtonElement>(null)
   const generationTimerRef = useRef<number | null>(null)
-  const referenceObjectUrlRef = useRef<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'create' | 'library'>('create')
-  const [prompt, setPrompt] = useState('')
-  const [assets, setAssets] = useState<MarketingAsset[]>(demoMarketingAssets)
-  const [previewAssetId, setPreviewAssetId] = useState(demoMarketingAssets[0].id)
-  const [selectedAssetId, setSelectedAssetId] = useState(demoMarketingAssets[0].id)
+  const [referenceFile, setReferenceFile] = useProductMemory<File | null>('creative-reference', null)
+  const [referenceSource, setReferenceSource] = useProductMemory('creative-reference-source', '')
+  const [activeTab, setActiveTab] = useProductMemory<'create' | 'library'>('marketing-tab', 'create', true)
+  const [prompt, setPrompt] = useProductMemory('creative-prompt', '')
+  const [assets, setAssets] = useState<MarketingAsset[]>(isFicharia ? demoMarketingAssets : [])
+  const [previewAssetId, setPreviewAssetId] = useState(isFicharia ? demoMarketingAssets[0].id : '')
+  const [selectedAssetId, setSelectedAssetId] = useState(isFicharia ? demoMarketingAssets[0].id : '')
   const [creativeDataState, setCreativeDataState] = useState<WorkflowDataState>('loading')
   const [query, setQuery] = useState('')
   const [referencePreview, setReferencePreview] = useState<string | null>(null)
-  const [referenceName, setReferenceName] = useState('')
-  const [reviewerEmail, setReviewerEmail] = useState('')
+  const [referenceName, setReferenceName] = useProductMemory('creative-reference-name', '')
+  const [reviewerEmail, setReviewerEmail] = useProductMemory('reviewer-email', '')
   const [isGenerating, setIsGenerating] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
+  useEffect(() => {
+    const url = referenceFile ? URL.createObjectURL(referenceFile) : referenceSource || null
+    setReferencePreview(url)
+    return () => { if (referenceFile && url) URL.revokeObjectURL(url) }
+  }, [referenceFile, referenceSource])
+
   useEffect(() => () => {
     if (generationTimerRef.current) window.clearTimeout(generationTimerRef.current)
-    if (referenceObjectUrlRef.current) URL.revokeObjectURL(referenceObjectUrlRef.current)
   }, [])
 
   useEffect(() => {
@@ -2245,7 +2277,7 @@ function MarketingDashboard() {
       })
       .catch(() => active && setCreativeDataState('error'))
     return () => { active = false }
-  }, [])
+  }, [workflowApi])
 
   const statusLabels: Record<MarketingAssetStatus, string> = {
     draft: 'Borrador',
@@ -2253,7 +2285,7 @@ function MarketingDashboard() {
     approved: 'Aprobada para El Visionario',
   }
 
-  const previewAsset = assets.find((asset) => asset.id === previewAssetId) ?? assets[0] ?? demoMarketingAssets[0]
+  const previewAsset = assets.find((asset) => asset.id === previewAssetId) ?? assets[0] ?? (isFicharia ? demoMarketingAssets[0] : null)
   const normalizedQuery = query.trim().toLocaleLowerCase('es')
   const filteredAssets = assets.filter((asset) => (
     `${asset.title} ${asset.prompt} ${asset.referenceName ?? ''} ${statusLabels[asset.status]}`
@@ -2278,8 +2310,8 @@ function MarketingDashboard() {
   }
 
   const clearReference = () => {
-    if (referenceObjectUrlRef.current) URL.revokeObjectURL(referenceObjectUrlRef.current)
-    referenceObjectUrlRef.current = null
+    setReferenceFile(null)
+    setReferenceSource('')
     setReferencePreview(null)
     setReferenceName('')
   }
@@ -2297,13 +2329,12 @@ function MarketingDashboard() {
       return
     }
     clearReference()
-    const objectUrl = URL.createObjectURL(file)
-    referenceObjectUrlRef.current = objectUrl
-    setReferencePreview(objectUrl)
+    setReferenceFile(file)
     setReferenceName(file.name)
   }
 
   const createPreview = () => {
+    if (!isFicharia || signal.aborted) return
     const cleanPrompt = prompt.trim()
     if (!cleanPrompt) {
       setError('Escribe una idea antes de crear la vista previa.')
@@ -2334,6 +2365,7 @@ function MarketingDashboard() {
   }
 
   const prepareReview = () => {
+    if (!isFicharia || !previewAsset) return
     const email = reviewerEmail.trim()
     if (!/^\S+@\S+\.\S+$/.test(email)) {
       setError('Indica un correo válido para preparar la revisión.')
@@ -2347,10 +2379,10 @@ function MarketingDashboard() {
   }
 
   const reuseAsset = (asset: MarketingAsset) => {
-    if (referenceObjectUrlRef.current) URL.revokeObjectURL(referenceObjectUrlRef.current)
-    referenceObjectUrlRef.current = null
+    setReferenceFile(null)
+    setReferenceSource('')
     setPrompt(asset.prompt)
-    setReferencePreview(asset.image)
+    setReferenceSource(asset.image)
     setReferenceName(`${asset.title}.webp`)
     setPreviewAssetId(asset.id)
     setMessage('Visual cargado como referencia. Ajusta el prompt para crear una nueva versión.')
@@ -2446,21 +2478,21 @@ function MarketingDashboard() {
               )}
             </div>
 
-            <button className="marketing-generate" type="button" disabled={isGenerating} onClick={createPreview}>
+            <button className="marketing-generate" type="button" disabled={isGenerating || !isFicharia} onClick={createPreview}>
               {isGenerating ? <LoaderCircle className="is-spinning" aria-hidden="true" /> : <Sparkles aria-hidden="true" />}
-              {isGenerating ? 'Preparando vista previa…' : 'Crear vista previa · Demo'}
+              {!isFicharia ? 'Generación pendiente de configuración' : isGenerating ? 'Preparando vista previa…' : 'Crear vista previa · Demo'}
             </button>
           </section>
 
           <section className="marketing-visualizer" aria-labelledby="marketing-visualizer-title">
             <header>
               <div><ImageIcon aria-hidden="true" /><h3 id="marketing-visualizer-title">Visualizador</h3></div>
-              <span data-status={previewAsset.status}>{statusLabels[previewAsset.status]}</span>
+              {previewAsset && <span data-status={previewAsset.status}>{statusLabels[previewAsset.status]}</span>}
             </header>
-            <figure>
+            <>{previewAsset ? <figure>
               <img src={previewAsset.image} alt={`Vista previa: ${previewAsset.title}`} />
               <figcaption>{previewAsset.title}</figcaption>
-            </figure>
+            </figure> : <p className="product-empty">Todavía no hay imágenes generadas para este producto. Puedes dejar preparado el prompt, la referencia y el correo de revisión.</p>}</>
 
             <div className="marketing-review">
               <label>
@@ -2472,7 +2504,7 @@ function MarketingDashboard() {
                   placeholder="persona@empresa.com"
                 />
               </label>
-              <button type="button" onClick={prepareReview}><Send aria-hidden="true" /> Preparar revisión</button>
+              <button type="button" disabled={!isFicharia || !previewAsset} onClick={prepareReview}><Send aria-hidden="true" /> Preparar revisión</button>
             </div>
             <p className="marketing-handoff"><Workflow aria-hidden="true" /> Al aprobarse, n8n podrá marcarla como imagen activa para los correos de El Visionario. Conexión pendiente.</p>
           </section>
@@ -2555,13 +2587,14 @@ function MarketingDashboard() {
 }
 
 export default function DashboardModal({ agent, onClose, csrfToken }: DashboardModalProps) {
+  const { product } = useProducts()
   if (!agent) return null
   return (
     <ModalShell agent={agent} onClose={onClose} csrfToken={csrfToken}>
-      {agent === 'prospecto' && <ProspectoDashboard csrfToken={csrfToken} />}
-      {agent === 'bardo' && <BardoDashboard />}
-      {agent === 'marketing' && <MarketingDashboard />}
-      {agent === 'bucle' && <BucleDashboard />}
+      {agent === 'prospecto' && <ProspectoDashboard key={product.id} csrfToken={csrfToken} />}
+      {agent === 'bardo' && <BardoDashboard key={product.id} />}
+      {agent === 'marketing' && <MarketingDashboard key={product.id} />}
+      {agent === 'bucle' && <BucleDashboard key={product.id} />}
     </ModalShell>
   )
 }

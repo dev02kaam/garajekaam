@@ -52,8 +52,14 @@ const mapImage = (row) => ({
 })
 
 // Pool/schema injection keeps the same operations reusable by the future creative studio.
-export function createCampaignImageStore(pool, schema = 'public') {
+export function createCampaignImageStore(pool, schema = 'public', prefix = 'ficharia-campana-') {
   if (!/^[a-z_][a-z0-9_]*$/i.test(schema)) throw new Error('Invalid campaign image schema')
+  if (!/^[a-z][a-z0-9-]*-$/.test(prefix)) throw new Error('Invalid campaign image prefix')
+  const validId = (id) => {
+    if (typeof id !== 'string' || !new RegExp('^' + prefix + '[0-9]{2}$').test(id)) {
+      throw new CampaignImageError(404, 'IMAGE_NOT_FOUND', 'No se encontró la imagen de este producto.')
+    }
+  }
   const table = `"${schema}".campaign_email_assets`
   const thumbnails = new Map()
 
@@ -75,6 +81,7 @@ export function createCampaignImageStore(pool, schema = 'public') {
   }
 
   async function current(client, id, revision) {
+    validId(id)
     const row = (await client.query(`SELECT ${fields} FROM ${table} WHERE asset_key = $1`, [id])).rows[0]
     if (!row) throw new CampaignImageError(404, 'IMAGE_NOT_FOUND', 'La imagen ya no está en la biblioteca.')
     if (row.revision !== revision) throw new CampaignImageError(409, 'IMAGE_CHANGED', 'Esta imagen ha cambiado en otra sesión. Actualiza la biblioteca y vuelve a intentarlo.')
@@ -95,8 +102,8 @@ export function createCampaignImageStore(pool, schema = 'public') {
         if (duplicate) return { image: mapImage(duplicate), duplicate: true }
         const slot = (await client.query(`SELECT
           (SELECT n FROM generate_series(1,100) n WHERE NOT EXISTS (SELECT 1 FROM ${table} WHERE sort_order = n) ORDER BY n LIMIT 1) AS position,
-          (SELECT 'ficharia-campana-' || lpad(n::text,2,'0') FROM generate_series(0,99) n
-            WHERE NOT EXISTS (SELECT 1 FROM ${table} WHERE asset_key = 'ficharia-campana-' || lpad(n::text,2,'0'))
+          (SELECT '${prefix}' || lpad(n::text,2,'0') FROM generate_series(0,99) n
+            WHERE NOT EXISTS (SELECT 1 FROM ${table} WHERE asset_key = '${prefix}' || lpad(n::text,2,'0'))
             ORDER BY CASE WHEN n = 0 THEN 100 ELSE n END LIMIT 1) AS key`)).rows[0]
         if (!slot.position || !slot.key) throw new CampaignImageError(409, 'IMAGE_LIBRARY_FULL', 'La biblioteca ha alcanzado su capacidad de 100 imágenes. Puedes sustituir una existente.')
         const row = (await client.query(`INSERT INTO ${table} (asset_key, file_name, mime_type, image_data, sha256, sort_order, active)
@@ -128,6 +135,7 @@ export function createCampaignImageStore(pool, schema = 'public') {
       })
     },
     async content(id, thumbnail = false) {
+      validId(id)
       let row
       try {
         row = (await pool.query(`SELECT file_name, mime_type, image_data, sha256 FROM ${table} WHERE asset_key = $1`, [id])).rows[0]

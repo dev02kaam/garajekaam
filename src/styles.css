@@ -21,6 +21,22 @@
 }
 
 /* Secure session and user administration */
+.product-selector { display: flex; align-items: center; gap: 8px; color: var(--paper-dim); font-size: 0.85rem; min-width: 0; }
+.product-selector select { min-height: 44px; max-width: 260px; min-width: 0; padding: 8px 30px 8px 12px; border: 1px solid var(--line); background: var(--ink-2); color: var(--paper); font: inherit; cursor: pointer; }
+.product-selector select:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.product-selector select:disabled { opacity: 0.65; cursor: wait; }
+.product-availability { display: grid; gap: 5px; margin: 0; padding: 14px 24px; color: var(--paper-dim); background: var(--ink-2); border-bottom: 1px solid var(--line); font-size: 0.9rem; line-height: 1.45; }
+.product-availability strong { color: var(--paper); }
+.product-empty { padding: 24px; color: var(--paper-dim); line-height: 1.5; }
+@media (max-width: 640px) {
+  .topbar { flex-wrap: wrap; }
+  .topbar > .product-selector { order: 3; flex-basis: 100%; justify-content: space-between; }
+  .topbar > .product-selector select { flex: 1; max-width: none; }
+  .dashboard-header { flex-wrap: wrap; gap: 12px; }
+  .dashboard-header-actions { flex: 1; justify-content: flex-end; }
+  .dashboard-header .product-selector > span { position: absolute; width: 1px; height: 1px; overflow: hidden; }
+  .dashboard-header .product-selector select { max-width: min(245px, 58vw); }
+}
 .is-spinning { animation: spin 900ms linear infinite; }
 
 .topbar-icon:disabled {

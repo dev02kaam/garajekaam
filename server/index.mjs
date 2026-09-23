@@ -1,3 +1,4 @@
+import { productRouter } from './product-routes.mjs'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -199,6 +200,7 @@ const campaignLaunchSchema = z.object({
   prompt: z.string().trim().min(1).max(1200),
   source: z.literal('garaje-kaam'),
   validContacts: z.coerce.number().int().min(1).max(2_000_000),
+  campaign_id: z.string().uuid().optional(),
 }).strict()
 
 const csvUpload = multer({
@@ -406,14 +408,20 @@ function dashboardRoute(loader) {
   }
 }
 
-app.get('/api/workflows/jobs', requireAuthentication, dashboardRoute(getJobs))
-app.use('/api/workflows/campaign-images', campaignImageRouter({
+const fichariaWorkflows = express.Router()
+fichariaWorkflows.use((_req, res, next) => {
+  const json = res.json.bind(res)
+  res.json = body => json({ ...body, product_id: 'ficharia' })
+  next()
+})
+fichariaWorkflows.get('/jobs', requireAuthentication, dashboardRoute(getJobs))
+fichariaWorkflows.use('/campaign-images', campaignImageRouter({
   store: createCampaignImageStore(pool, workflowSchema),
   authenticate: requireAuthentication,
   protectCsrf: csrfSynchronisedProtection,
 }))
-app.get('/api/workflows/campaigns', requireAuthentication, dashboardRoute(getCampaigns))
-app.get('/api/workflows/campaigns/:campaignId/contacts', requireAuthentication, async (req, res) => {
+fichariaWorkflows.get('/campaigns', requireAuthentication, dashboardRoute(getCampaigns))
+fichariaWorkflows.get('/campaigns/:campaignId/contacts', requireAuthentication, async (req, res) => {
   const campaignId = parse(idSchema, req.params.campaignId, res)
   if (!campaignId) return
   const input = parse(campaignContactsQuerySchema, req.query, res)
@@ -421,8 +429,8 @@ app.get('/api/workflows/campaigns/:campaignId/contacts', requireAuthentication, 
   res.set('Cache-Control', 'private, no-store')
   res.json(await getCampaignContacts({ campaignId, ...input }))
 })
-app.get('/api/workflows/conversations', requireAuthentication, dashboardRoute(getConversations))
-app.get('/api/workflows/conversations/emails/:emailId', requireAuthentication, async (req, res) => {
+fichariaWorkflows.get('/conversations', requireAuthentication, dashboardRoute(getConversations))
+fichariaWorkflows.get('/conversations/emails/:emailId', requireAuthentication, async (req, res) => {
   const emailId = parse(idSchema, req.params.emailId, res)
   if (!emailId) return
   res.set('Cache-Control', 'private, no-store')
@@ -432,14 +440,14 @@ app.get('/api/workflows/conversations/emails/:emailId', requireAuthentication, a
   }
   res.json(result)
 })
-app.get('/api/workflows/followups', requireAuthentication, dashboardRoute(getFollowups))
-app.get('/api/workflows/creatives', requireAuthentication, dashboardRoute(getCreatives))
-app.get('/api/workflows/config', requireAuthentication, (_req, res) => {
+fichariaWorkflows.get('/followups', requireAuthentication, dashboardRoute(getFollowups))
+fichariaWorkflows.get('/creatives', requireAuthentication, dashboardRoute(getCreatives))
+fichariaWorkflows.get('/config', requireAuthentication, (_req, res) => {
   res.set('Cache-Control', 'private, no-store')
   res.json({ campaignWebhookConfigured: campaignWebhookConfigured() })
 })
-app.post(
-  '/api/workflows/campaigns/launch',
+fichariaWorkflows.post(
+  '/campaigns/launch',
   requireAuthentication,
   csrfSynchronisedProtection,
   csvUpload.single('csv'),
@@ -457,8 +465,12 @@ app.post(
       if (error?.code === 'N8N_NOT_CONFIGURED') {
         return res.status(503).json({ code: error.code, message: error.message })
       }
-      if (error?.code === 'N8N_REJECTED' || error?.name === 'TimeoutError') {
-        return res.status(502).json({ code: error.code || 'N8N_TIMEOUT', message: error.message || 'n8n no respondió a tiempo.' })
+      if (error?.name === 'TimeoutError') {
+        return res.status(504).json({ code: 'N8N_TIMEOUT', message: 'n8n no confirmó la recepción a tiempo. Comprueba el historial antes de volver a enviar la campaña.' })
+      }
+      if (error?.code === 'N8N_REJECTED') {
+        const status = [400, 409, 422, 429].includes(error.status) ? error.status : 502
+        return res.status(status).json({ code: error.code, message: error.message || 'n8n rechazó la campaña.' })
       }
       if (error instanceof TypeError) {
         return res.status(502).json({ code: 'N8N_UNREACHABLE', message: 'No se pudo conectar con n8n.' })
@@ -467,6 +479,9 @@ app.post(
     }
   },
 )
+
+app.use('/api/workflows', fichariaWorkflows)
+app.use('/api/products', productRouter({ pool, fichariaRouter: fichariaWorkflows, authenticate: requireAuthentication, protectCsrf: csrfSynchronisedProtection }))
 
 app.use('/api', (_req, res) => res.status(404).json({ code: 'NOT_FOUND', message: 'Recurso no encontrado.' }))
 

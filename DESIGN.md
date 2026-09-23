@@ -213,6 +213,8 @@ La galería de Imágenes ocupa el ancho del panel de El Visionario, debajo de su
 
 **The Same Garage Rule.** En móvil se recorre la misma escena integrada; no se recortan avatares para convertirlos en una lista de tarjetas.
 
+El selector de producto comparte la barra superior y las cabeceras de los dashboards. Hasta 640px, la barra admite salto de línea y el selector ocupa una fila completa; dentro del dashboard, la cabecera también admite salto y conserva el cierre junto al selector. En ese tramo, su etiqueta sigue disponible para tecnologías de asistencia aunque se oculte visualmente dentro del dashboard.
+
 ## Elevation & Depth
 
 La profundidad es híbrida. Las superficies grandes se separan con capas tonales y sombras ambientales oscuras; botones, tickets, etiquetas de puesto y la recreativa usan sombras desplazadas, duras y visibles que recuerdan piezas físicas montadas a mano. El desenfoque se limita a las etiquetas superpuestas sobre la escena.
@@ -279,6 +281,14 @@ Cada puesto es una zona transparente sobre la escena con un beacon circular nume
 ### Dashboard Modal
 
 Los dashboards comparten marco, cabecera fija, cierre, trampa de foco y comportamiento responsive. El tema cambia el acento, el material interior y la voz —trato, manuscrito, creatividad o relatividad— sin alterar patrones de acción.
+
+### Product Context
+
+El selector nativo **Producto** muestra Ficharia y **DECA · Una app de Kaam**, con una única selección compartida por el garaje y todos los dashboards. Reutiliza papel sobre superficie nocturna, borde fino y geometría recta; su altura mínima es de 44px. El foco usa Luz de Foco con contorno de 2px separado 3px. Durante una operación de escritura se deshabilita al 65% de opacidad, conserva el valor visible y anuncia «Guardando…».
+
+La disponibilidad aparece debajo de la cabecera del dashboard como una franja nocturna con nombre de producto, «Pendiente de configuración» y explicación de las tareas disponibles. Es un estado informativo anunciado, acompañado por restricciones reales en las acciones. Carga de catálogo y fallo recuperable tienen mensajes separados; el error ofrece «Volver a intentar».
+
+**The Shared Product Context Rule.** El nombre seleccionado identifica el contexto de trabajo en todos los puestos; el estado y las acciones disponibles se explican con texto. DECA conserva identidad textual y no introduce otro logotipo, color de marca ni tema de personaje.
 
 ### Campaign Images
 

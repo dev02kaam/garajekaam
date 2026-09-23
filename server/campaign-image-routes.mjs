@@ -12,9 +12,10 @@ function uploadedFile(file) {
   return { ...file, originalname: isUtf8(nameBytes) ? nameBytes.toString('utf8') : file.originalname }
 }
 
-export function campaignImageRouter({ store, authenticate, protectCsrf }) {
+export function campaignImageRouter({ store, authenticate, protectCsrf, prefix = 'ficharia-campana-' }) {
   const router = express.Router()
-  const id = z.string().regex(/^ficharia-campana-[0-9]{2}$/)
+  if (!/^[a-z][a-z0-9-]*-$/.test(prefix)) throw new Error('Invalid image prefix')
+  const id = z.string().regex(new RegExp('^' + prefix + '[0-9]{2}$'))
   const revision = z.string().regex(/^\d{1,20}$/)
   const upload = multer({ storage: multer.memoryStorage(), limits: { files: 1, fileSize: MAX_IMAGE_BYTES, fields: 1, fieldSize: 64, parts: 3 } })
   const limitWrites = rateLimit({ windowMs: 60_000, limit: 60, standardHeaders: 'draft-8', legacyHeaders: false,
