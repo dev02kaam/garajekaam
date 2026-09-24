@@ -6,7 +6,7 @@ export const campaignPolicy = Object.freeze({
   max_emails_per_day: 5_000,
   max_emails_per_hour: 150,
   min_send_interval_seconds: 30,
-  max_sends_per_run: 10,
+  max_sends_per_run: 5,
   timezone: 'Europe/Madrid',
   business_window_start: '10:00',
   business_window_end: '17:00',

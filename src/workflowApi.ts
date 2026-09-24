@@ -15,6 +15,7 @@ export type WorkflowCampaign = {
   status: 'completed' | 'partial' | 'running' | 'needs-review' | 'cancelled' | 'queued' | 'paused' | 'failed' | 'pending-data'
   workflowStatus: string
   lastError: { code: string | null; message: string | null } | null
+  deliveryHealth?: { needsRecovery: boolean; expiredReservations: number; lastSentAt: string | null; transportDelayed?: boolean; stalledTransports?: number; oldestTransportAt?: string | null }
   execution: {
     pendingSegmentation: number
     segmenting: number
@@ -50,6 +51,7 @@ export type WorkflowCampaignContact = {
   email: string
   segment: string | null
   status: string
+  recoveryPending?: boolean
   matchScore: number | null
   matchReason: string | null
   scheduledAt: string | null

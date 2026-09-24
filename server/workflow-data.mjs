@@ -53,6 +53,7 @@ function errorDetail(value) {
 
 function issueReason(row) {
   const error = row.last_error && typeof row.last_error === 'object' ? row.last_error : {}
+  if (row.status === 'sending' && row.recovery_pending) return 'El envío quedó pendiente de recuperación.'
   return String(error.message || error.code || row.status || 'Incidencia de entrega')
 }
 
@@ -70,6 +71,7 @@ function planDays(plan, counts) {
 }
 
 export async function getCampaigns(limit) {
+  const hasMailAttempts = await relationExists('kaam_mail_attempts')
   const result = await availableQuery('ficharia_outbound_campaign_status', `
     SELECT
       c.campaign_id,
@@ -95,10 +97,27 @@ export async function getCampaigns(limit) {
       c.created_at,
       c.updated_at,
       c.completed_at,
+      health.expired_reservations,
+      health.stalled_transports,
+      health.oldest_transport_at,
+      health.last_sent_at,
       COALESCE(issues.items, '[]'::jsonb) AS delivery_issues
     FROM ${workflowSchemaSql}.outbound_campaigns c
     JOIN ${workflowSchemaSql}.ficharia_outbound_campaign_status s
       ON s.campaign_id = c.campaign_id
+    LEFT JOIN LATERAL (
+      SELECT count(*) FILTER (WHERE status = 'sending' AND lease_expires_at < now())::integer AS expired_reservations,
+        max(sent_at) FILTER (WHERE status = 'sent') AS last_sent_at,
+        ${hasMailAttempts ? `(SELECT count(*)::integer FROM ${workflowSchemaSql}.kaam_mail_attempts a
+          JOIN ${workflowSchemaSql}.outbound_campaign_contacts pending ON pending.contact_id=a.source_id
+          WHERE a.source_kind='campaign' AND a.outcome='started' AND a.started_at < now()-interval '2 minutes'
+            AND pending.campaign_id=c.campaign_id AND pending.status='sending')` : '0'} AS stalled_transports,
+        ${hasMailAttempts ? `(SELECT min(a.started_at) FROM ${workflowSchemaSql}.kaam_mail_attempts a
+          JOIN ${workflowSchemaSql}.outbound_campaign_contacts pending ON pending.contact_id=a.source_id
+          WHERE a.source_kind='campaign' AND a.outcome='started'
+            AND pending.campaign_id=c.campaign_id AND pending.status='sending')` : 'NULL::timestamptz'} AS oldest_transport_at
+      FROM ${workflowSchemaSql}.outbound_campaign_contacts WHERE campaign_id = c.campaign_id
+    ) health ON true
     LEFT JOIN LATERAL (
       SELECT jsonb_agg(jsonb_build_object(
         'id', x.contact_id,
@@ -107,14 +126,17 @@ export async function getCampaigns(limit) {
         'segment', COALESCE(x.segment_id, 'Sin segmento'),
         'status', x.status,
         'lastError', x.last_error,
+        'recoveryPending', x.recovery_pending,
         'attemptedAt', COALESCE(x.last_send_attempt_at, x.updated_at)
       ) ORDER BY COALESCE(x.last_send_attempt_at, x.updated_at) DESC) AS items
       FROM (
         SELECT contact_id, contact_data, email_normalized, segment_id, status,
-          last_error, last_send_attempt_at, updated_at
+          last_error, last_send_attempt_at, updated_at,
+          (status = 'sending' AND lease_expires_at < now()) AS recovery_pending
         FROM ${workflowSchemaSql}.outbound_campaign_contacts
         WHERE campaign_id = c.campaign_id
-          AND status IN ('suppressed', 'capacity_exhausted', 'delivery_unknown', 'failed')
+          AND (status IN ('suppressed', 'capacity_exhausted', 'delivery_unknown', 'failed')
+            OR (status = 'sending' AND lease_expires_at < now()))
         ORDER BY COALESCE(last_send_attempt_at, updated_at) DESC
         LIMIT 100
       ) x
@@ -192,6 +214,14 @@ export async function getCampaigns(limit) {
         status: campaignStatus(row.status),
         workflowStatus: row.status,
         lastError: errorDetail(row.last_error),
+        deliveryHealth: {
+          needsRecovery: (asNumber(row.expired_reservations) || 0) > 0,
+          transportDelayed: (asNumber(row.stalled_transports) || 0) > 0,
+          stalledTransports: asNumber(row.stalled_transports) || 0,
+          oldestTransportAt: iso(row.oldest_transport_at),
+          expiredReservations: asNumber(row.expired_reservations) || 0,
+          lastSentAt: iso(row.last_sent_at),
+        },
         execution: {
           pendingSegmentation: asNumber(row.pending_segmentation) || 0,
           segmenting: asNumber(row.segmenting) || 0,
@@ -215,7 +245,7 @@ export async function getCampaigns(limit) {
           company: issue.company,
           email: issue.email,
           segment: issue.segment,
-          reason: issueReason({ status: issue.status, last_error: issue.lastError }),
+          reason: issueReason({ status: issue.status, last_error: issue.lastError, recovery_pending: issue.recoveryPending }),
           attemptedAt: iso(issue.attemptedAt),
         })),
       }
@@ -226,8 +256,8 @@ export async function getCampaigns(limit) {
 const campaignContactFilters = {
   all: 'TRUE',
   sent: "x.status = 'sent'",
-  pending: "x.status IN ('pending_segmentation', 'segmenting', 'scheduled', 'sending')",
-  issues: "x.status IN ('suppressed', 'capacity_exhausted', 'delivery_unknown', 'failed')",
+  pending: "(x.status IN ('pending_segmentation', 'segmenting', 'scheduled') OR (x.status = 'sending' AND (x.lease_expires_at IS NULL OR x.lease_expires_at >= now())))",
+  issues: "(x.status IN ('suppressed', 'capacity_exhausted', 'delivery_unknown', 'failed') OR (x.status = 'sending' AND x.lease_expires_at < now()))",
   'not-selected': "x.status = 'not_selected'",
 }
 
@@ -239,6 +269,7 @@ export async function getCampaignContacts({ campaignId, limit, offset, query, st
       x.email_normalized,
       x.contact_data,
       x.status,
+      (x.status = 'sending' AND x.lease_expires_at < now()) AS recovery_pending,
       x.segment_id,
       x.match_score,
       x.match_reason,
@@ -312,6 +343,7 @@ export async function getCampaignContacts({ campaignId, limit, offset, query, st
         email: row.email_normalized,
         segment: row.segment_id || null,
         status: row.status,
+        recoveryPending: row.recovery_pending === true,
         matchScore: asNumber(row.match_score),
         matchReason: row.match_reason || null,
         scheduledAt: iso(row.scheduled_at),

@@ -85,6 +85,7 @@ type CampaignHistoryItem = {
   updatedAt: string | null
   completedAt: string | null
   lastError: WorkflowCampaign['lastError']
+  deliveryHealth?: WorkflowCampaign['deliveryHealth']
   execution: WorkflowCampaign['execution'] | null
   selectedCompanies: number | null
   companiesContacted: number | null
@@ -401,11 +402,12 @@ function mapCampaign(campaign: WorkflowCampaign): CampaignHistoryItem {
     csvRows: campaign.csvRows,
     csvValid: campaign.csvValid,
     prompt: campaign.prompt,
-    status: campaign.status,
+    status: (campaign.deliveryHealth?.needsRecovery || campaign.deliveryHealth?.transportDelayed) && campaign.status === 'running' ? 'needs-review' : campaign.status,
     workflowStatus: campaign.workflowStatus,
     updatedAt: campaign.updatedAt,
     completedAt: campaign.completedAt,
     lastError: campaign.lastError,
+    deliveryHealth: campaign.deliveryHealth,
     execution: campaign.execution,
     selectedCompanies: campaign.selectedCompanies,
     companiesContacted: campaign.companiesContacted,
@@ -986,31 +988,44 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
       return () => { active = false }
     }
 
+    let refreshing = false
+    let loaded = false
     setCampaignContactState('loading')
-    const timer = window.setTimeout(() => {
-      workflowApi.campaignContacts(selectedCampaignDatabaseId, {
-        limit: 50,
-        offset: campaignContactPage * 50,
-        query: campaignContactQuery.trim(),
-        status: campaignContactFilter,
-      })
-        .then((result) => {
-          if (!active) return
-          setCampaignContacts(result.contacts)
-          setCampaignContactsTotal(result.total)
-          setCampaignContactState('ready')
+    const loadContacts = async () => {
+      if (refreshing || !active) return
+      refreshing = true
+      try {
+        const result = await workflowApi.campaignContacts(selectedCampaignDatabaseId, {
+          limit: 50,
+          offset: campaignContactPage * 50,
+          query: campaignContactQuery.trim(),
+          status: campaignContactFilter,
         })
-        .catch(() => {
-          if (!active) return
-          setCampaignContacts([])
-          setCampaignContactsTotal(0)
-          setCampaignContactState('error')
-        })
-    }, 250)
+        if (!active) return
+        loaded = true
+        setCampaignContacts(result.contacts)
+        setCampaignContactsTotal(result.total)
+        setCampaignContactState('ready')
+      } catch {
+        if (!active) return
+        if (!loaded) { setCampaignContacts([]); setCampaignContactsTotal(0) }
+        setCampaignContactState('error')
+      } finally { refreshing = false }
+    }
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') void loadContacts()
+    }
+    const timer = window.setTimeout(() => void loadContacts(), 250)
+    const interval = window.setInterval(refreshWhenVisible, 15_000)
+    window.addEventListener('focus', refreshWhenVisible)
+    document.addEventListener('visibilitychange', refreshWhenVisible)
 
     return () => {
       active = false
       window.clearTimeout(timer)
+      window.clearInterval(interval)
+      window.removeEventListener('focus', refreshWhenVisible)
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
     }
   }, [workflowApi, activeTab, campaignContactFilter, campaignContactPage, campaignContactQuery, selectedCampaignDatabaseId])
 
@@ -1039,11 +1054,12 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
     failed: 'Fallido',
   }
   const selectedExecution = selectedCampaign?.execution
+  const expiredReservations = selectedCampaign?.deliveryHealth?.expiredReservations ?? 0
   const selectedIssueCount = selectedExecution
-    ? selectedExecution.suppressed + selectedExecution.capacityExhausted + selectedExecution.deliveryUnknown + selectedExecution.failed
+    ? selectedExecution.suppressed + selectedExecution.capacityExhausted + selectedExecution.deliveryUnknown + selectedExecution.failed + expiredReservations
     : selectedCampaign?.deliveryIssues.length ?? 0
   const selectedPendingCount = selectedExecution
-    ? selectedExecution.pendingSegmentation + selectedExecution.segmenting + selectedExecution.scheduled + selectedExecution.sending
+    ? Math.max(0, selectedExecution.pendingSegmentation + selectedExecution.segmenting + selectedExecution.scheduled + selectedExecution.sending - expiredReservations)
     : 0
   const campaignContactFilterCounts: Record<CampaignContactFilter, number | null> = {
     all: selectedCampaign?.csvValid ?? null,
@@ -1309,21 +1325,22 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
                 </header>
 
                 {selectedCampaign.source === 'database' && (
-                  <section className="campaign-execution-summary" data-status={selectedCampaign.status} aria-label="Estado de ejecución de la campaña">
+                  <section className="campaign-execution-summary" data-status={(selectedCampaign.deliveryHealth?.needsRecovery || selectedCampaign.deliveryHealth?.transportDelayed) ? 'needs-review' : selectedCampaign.status} aria-label="Estado de ejecución de la campaña">
                     <div className="campaign-execution-state">
-                      {selectedCampaign.status === 'completed'
+                      {(selectedCampaign.deliveryHealth?.needsRecovery || selectedCampaign.deliveryHealth?.transportDelayed) ? <AlertTriangle aria-hidden="true" /> : selectedCampaign.status === 'completed'
                         ? <Check aria-hidden="true" />
                         : ['partial', 'needs-review', 'failed', 'cancelled'].includes(selectedCampaign.status)
                           ? <AlertTriangle aria-hidden="true" />
                           : <LoaderCircle aria-hidden="true" />}
                       <span>
                         <small>Resultado del workflow</small>
-                        <strong>{campaignStatusLabels[selectedCampaign.status]}</strong>
+                        <strong>{selectedCampaign.deliveryHealth?.needsRecovery ? 'Requiere recuperación' : selectedCampaign.deliveryHealth?.transportDelayed ? 'Envío sin respuesta' : campaignStatusLabels[selectedCampaign.status]}</strong>
                         <time dateTime={selectedCampaign.completedAt ?? selectedCampaign.updatedAt ?? selectedCampaign.createdAt}>
                           {selectedCampaign.completedAt
                             ? `Terminó ${formatDateTime(selectedCampaign.completedAt)}`
                             : `Actualizado ${formatDateTime(selectedCampaign.updatedAt, 'sin actualización registrada')}`}
                         </time>
+                        {selectedCampaign.deliveryHealth?.lastSentAt && <time dateTime={selectedCampaign.deliveryHealth.lastSentAt}>Último envío {formatDateTime(selectedCampaign.deliveryHealth.lastSentAt)}</time>}
                       </span>
                     </div>
                     <dl>
@@ -1338,6 +1355,18 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
                         <span>{selectedCampaign.lastError.message || 'n8n marcó esta campaña para revisión.'}</span>
                       </div>
                     )}
+                    {selectedCampaign.deliveryHealth?.transportDelayed && !selectedCampaign.deliveryHealth?.needsRecovery && (
+                      <div className="campaign-execution-error" role="status">
+                        <strong>El envío está tardando más de lo esperado</strong>
+                        <span>Lleva más de dos minutos sin devolver resultado. La cola se recupera automáticamente si el intento queda interrumpido; este correo no se repetirá sin confirmar su entrega.</span>
+                      </div>
+                    )}
+                    {selectedCampaign.deliveryHealth?.needsRecovery && (
+                      <div className="campaign-execution-error" role="status">
+                        <strong>Envíos pendientes de recuperar</strong>
+                        <span>{expiredReservations === 1 ? 'Un contacto quedó' : `${expiredReservations} contactos quedaron`} sin un resultado de envío. La recuperación automática conserva aparte las entregas sin confirmar para evitar duplicados.</span>
+                      </div>
+                    )}
                   </section>
                 )}
 
@@ -1345,7 +1374,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
                   <div>
                     <span>Seleccionadas por el prompt</span>
                     <strong>{formatCampaignCount(selectedCampaign.selectedCompanies)}</strong>
-                    <small>{selectedCampaign.csvRows !== null && selectedCampaign.selectedCompanies !== null ? `de ${formatCampaignCount(selectedCampaign.csvRows)} empresas del CSV` : 'Selección pendiente'}</small>
+                    <small>{selectedExecution && selectedExecution.pendingSegmentation + selectedExecution.segmenting > 0 ? `${formatCampaignCount(selectedExecution.pendingSegmentation + selectedExecution.segmenting)} ${selectedExecution.pendingSegmentation + selectedExecution.segmenting === 1 ? 'contacto' : 'contactos'} por revisar` : (selectedCampaign.csvRows ?? selectedCampaign.csvValid) !== null ? `de ${formatCampaignCount(selectedCampaign.csvRows ?? selectedCampaign.csvValid)} contactos del CSV` : 'Selección pendiente'}</small>
                   </div>
                   <div>
                     <span>Empresas contactadas</span>
@@ -1468,7 +1497,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
                       <div className="campaign-contact-list">
                         {campaignContacts.map((contact) => {
                           const contactMoment = contact.sentAt ?? contact.attemptedAt ?? contact.scheduledAt ?? contact.nextAttemptAt
-                          const contactStatusLabel = campaignContactStatusLabels[contact.status] || contact.status
+                          const contactStatusLabel = contact.recoveryPending ? 'Pendiente de recuperación' : campaignContactStatusLabels[contact.status] || contact.status
                           return (
                             <details key={contact.id} className="campaign-contact-item" data-status={contact.status}>
                               <summary>
