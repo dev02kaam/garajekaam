@@ -26,7 +26,7 @@ export function productRouter({ pool, fichariaRouter, authenticate, protectCsrf 
     if (req.method !== 'GET') return next(new ProductError(503, 'PRODUCT_NOT_READY', 'deca', 'Bajo construcción.'))
     const base = { product_id: 'deca', available: true, configured: false, status: 'preparing', message: 'Bajo construcción.' }
     const empty = { '/jobs': { jobs: [] }, '/campaigns': { campaigns: [] }, '/conversations': { conversations: [] },
-      '/followups': { conversations: [] }, '/creatives': { assets: [] }, '/config': { campaignWebhookConfigured: false } }
+      '/optouts': { optouts: [], total: 0 }, '/followups': { conversations: [] }, '/creatives': { assets: [] }, '/config': { campaignWebhookConfigured: false } }
     if (Object.hasOwn(empty, req.path)) return res.json({ ...base, ...empty[req.path] })
     return res.status(404).json({ product_id: 'deca', code: 'NOT_FOUND', message: 'No existe ese recurso de DECA.' })
   })

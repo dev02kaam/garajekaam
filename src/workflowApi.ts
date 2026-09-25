@@ -154,6 +154,16 @@ export type WorkflowCreative = {
   updatedAt: string | null
 }
 
+export type WorkflowOptout = {
+  email: string
+  domain: string
+  optedOutAt: string | null
+  reason: string
+  source: string
+  confirmationStatus: 'pending' | 'drafting' | 'sending' | 'sent' | 'delivery_unknown' | null
+  confirmedAt: string | null
+}
+
 export type WorkflowJob = {
   id: string
   type: 'campaign' | 'creative' | string
@@ -234,6 +244,10 @@ export function createWorkflowApi(productId: string, scopeSignal: AbortSignal, b
     return request<{ available: boolean; total: number; contacts: WorkflowCampaignContact[] }>(
       `${base}/campaigns/${encodeURIComponent(campaignId)}/contacts?${params}`,
     )
+  },
+  optouts: (options: { query?: string; offset?: number; limit?: number } = {}, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ query: options.query ?? '', offset: String(options.offset ?? 0), limit: String(options.limit ?? 50) })
+    return request<{ available: boolean; total: number; optouts: WorkflowOptout[] }>(base + '/optouts?' + params, { signal })
   },
   conversations: (limit = 100) => request<{ available: boolean; conversations: WorkflowConversation[] }>(`${base}/conversations?limit=${limit}`),
   conversationEmail: (emailId: string) => request<{ available: boolean; email: WorkflowConversationEmail | null }>(`${base}/conversations/emails/${encodeURIComponent(emailId)}`),

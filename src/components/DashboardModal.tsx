@@ -25,6 +25,7 @@ import {
 import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '../auth'
 import { CampaignImages } from './CampaignImages'
+import { BardoOptouts } from './BardoOptouts'
 import marketingAgriculture from '../assets/marketing-agriculture-automation.webp'
 import marketingCreativeStudio from '../assets/marketing-creative-studio.webp'
 import marketingWinery from '../assets/marketing-winery-followup.webp'
@@ -1661,7 +1662,8 @@ function BardoDashboard() {
   const isFicharia = product.id === 'ficharia'
   const liveTabRef = useRef<HTMLButtonElement>(null)
   const historyTabRef = useRef<HTMLButtonElement>(null)
-  const [activeTab, setActiveTab] = useProductMemory<'live' | 'history'>('bardo-tab', 'live', true)
+  const optoutsTabRef = useRef<HTMLButtonElement>(null)
+  const [activeTab, setActiveTab] = useProductMemory<'live' | 'history' | 'optouts'>('bardo-tab', 'live', true)
   const [query, setQuery] = useState('')
   const [selectedConversationId, setSelectedConversationId] = useState(isFicharia ? bardoConversations[0].id : '')
   const [selectedEmailId, setSelectedEmailId] = useState(isFicharia ? bardoConversations[0].emails[0].id : '')
@@ -1813,15 +1815,18 @@ function BardoDashboard() {
     setSelectedEmailId(conversation.emails[0]?.id ?? '')
   }
 
-  const changeTab = (tab: 'live' | 'history') => {
+  const changeTab = (tab: 'live' | 'history' | 'optouts') => {
     setActiveTab(tab)
-    window.requestAnimationFrame(() => (tab === 'live' ? liveTabRef : historyTabRef).current?.focus())
+    window.requestAnimationFrame(() => (tab === 'live' ? liveTabRef : tab === 'history' ? historyTabRef : optoutsTabRef).current?.focus())
   }
 
   const onTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>) => {
     if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
     event.preventDefault()
-    changeTab(event.key === 'ArrowLeft' || event.key === 'Home' ? 'live' : 'history')
+    const tabs = ['live', 'history', 'optouts'] as const
+    const current = tabs.indexOf(activeTab)
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? 2 : (current + (event.key === 'ArrowRight' ? 1 : 2)) % 3
+    changeTab(tabs[next])
   }
 
   return (
@@ -1853,9 +1858,14 @@ function BardoDashboard() {
         >
           <History aria-hidden="true" /> Historial
         </button>
+        <button ref={optoutsTabRef} id="bardo-optouts-tab" type="button" role="tab"
+          aria-selected={activeTab === 'optouts'} aria-controls="bardo-optouts-panel"
+          tabIndex={activeTab === 'optouts' ? 0 : -1} onClick={() => setActiveTab('optouts')} onKeyDown={onTabKeyDown}>
+          <MailOpen aria-hidden="true" /> Bajas
+        </button>
       </div>
 
-      {activeTab === 'live' ? (
+      {activeTab === 'optouts' ? <BardoOptouts /> : activeTab === 'live' ? (
         <section id="bardo-live-panel" className="bardo-layout bardo-layout-live" role="tabpanel" aria-labelledby="bardo-live-tab">
           <section className="bardo-process" aria-labelledby="bardo-process-title">
             <header className="bardo-process-heading">

@@ -6737,3 +6737,26 @@ footer span:last-child {
   .campaign-used-prompt { margin-left: 0; padding: 18px 0 0; }
   .campaign-days li { grid-template-columns: minmax(70px, 0.75fr) minmax(105px, 1.15fr) auto; gap: 8px; }
 }
+
+.bardo-optout-tools { display: flex; align-items: center; gap: 12px; margin-top: 22px; }
+.bardo-optout-tools .bardo-search { flex: 1; min-width: 0; margin: 0; }
+.bardo-optout-refresh, .bardo-optout-pages button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 14px; color: #2a1c2d; background: transparent; border: 1px solid #624b6c; cursor: pointer; }
+.bardo-optout-refresh svg { width: 17px; height: 17px; }
+.bardo-optout-refresh:disabled, .bardo-optout-pages button:disabled { opacity: .55; cursor: default; }
+.bardo-optout-refresh:focus-visible, .bardo-optout-pages button:focus-visible { outline: 3px solid #624b6c; outline-offset: 3px; }
+.bardo-optout-refresh:hover:not(:disabled), .bardo-optout-pages button:hover:not(:disabled) { background: #e0d3e3; }
+.bardo-optout-note { max-width: 70ch; margin: 18px 0 24px; color: #5c4b61; font-size: .88rem; }
+.bardo-optout-list { list-style: none; padding: 0; margin: 0; }
+.bardo-optout-list li { display: flex; justify-content: space-between; gap: 20px; padding: 18px 0; border-top: 1px solid #b2a5b3; }
+.bardo-optout-list li > div { min-width: 0; }
+.bardo-optout-list strong { display: block; overflow-wrap: anywhere; }
+.bardo-optout-list small { display: block; margin-top: 6px; color: #5c4b61; }
+.bardo-optout-delivery { flex: 0 1 40%; }
+.bardo-optout-delivery > span { color: #295740; font-weight: 700; }
+.bardo-optout-pages { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 24px; }
+@media (max-width: 600px) {
+ .bardo-optout-tools { flex-wrap: wrap; }
+ .bardo-optout-tools .bardo-search { flex-basis: 100%; }
+ .bardo-optout-list li { flex-direction: column; gap: 12px; }
+ .bardo-optout-pages { flex-wrap: wrap; }
+}

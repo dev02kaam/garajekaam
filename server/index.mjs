@@ -27,6 +27,7 @@ import {
   getCampaignContacts,
   getConversationEmail,
   getConversations,
+  getOptouts,
   getCreatives,
   getFollowups,
   getJobs,
@@ -428,6 +429,11 @@ fichariaWorkflows.get('/campaigns/:campaignId/contacts', requireAuthentication, 
   if (!input) return
   res.set('Cache-Control', 'private, no-store')
   res.json(await getCampaignContacts({ campaignId, ...input }))
+})
+fichariaWorkflows.get('/optouts', requireAuthentication, async (req, res) => {
+  const input = parse(z.object({ limit: z.coerce.number().int().min(1).max(100).default(50), offset: z.coerce.number().int().min(0).max(100000).default(0), query: z.string().trim().max(200).default('') }), req.query, res)
+  if (!input) return
+  res.json(await getOptouts(input))
 })
 fichariaWorkflows.get('/conversations', requireAuthentication, dashboardRoute(getConversations))
 fichariaWorkflows.get('/conversations/emails/:emailId', requireAuthentication, async (req, res) => {

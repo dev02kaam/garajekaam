@@ -566,3 +566,21 @@ export async function getJobs(limit) {
     })),
   }
 }
+
+export async function getOptouts({ limit = 50, offset = 0, query = '' } = {}) {
+  if (!await relationExists('suppression_list')) return { available: false, total: 0, optouts: [] }
+  const hasConfirmations = await relationExists('kaam_optout_confirmations')
+  const filter = "s.product_id='ficharia' AND s.status='active' AND ($1='' OR strpos(lower(s.email_normalized || ' ' || s.domain), lower($1))>0)"
+  const count = await pool.query('SELECT count(*)::int AS total FROM ' + workflowSchemaSql + '.suppression_list s WHERE ' + filter, [query])
+  const rows = await pool.query(
+    'SELECT s.email_normalized, s.domain, s.opted_out_at, s.opt_out_type, s.source, '
+    + (hasConfirmations ? 'q.status AS confirmation_status, q.sent_at AS confirmed_at' : 'NULL::text AS confirmation_status, NULL::timestamptz AS confirmed_at')
+    + ' FROM ' + workflowSchemaSql + '.suppression_list s '
+    + (hasConfirmations ? 'LEFT JOIN ' + workflowSchemaSql + '.kaam_optout_confirmations q ON q.email=s.email_normalized AND q.product_id=s.product_id ' : '')
+    + 'WHERE ' + filter + ' ORDER BY s.opted_out_at DESC, s.email_normalized LIMIT $2 OFFSET $3', [query, limit, offset])
+  return { available: true, total: count.rows[0].total, optouts: rows.rows.map(row => ({
+    email: row.email_normalized, domain: row.domain, optedOutAt: iso(row.opted_out_at),
+    reason: row.opt_out_type, source: row.source, confirmationStatus: row.confirmation_status,
+    confirmedAt: iso(row.confirmed_at),
+  })) }
+}

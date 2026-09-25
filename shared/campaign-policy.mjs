@@ -8,7 +8,7 @@ export const campaignPolicy = Object.freeze({
   min_send_interval_seconds: 30,
   max_sends_per_run: 5,
   timezone: 'Europe/Madrid',
-  business_window_start: '10:00',
+  business_window_start: '08:30',
   business_window_end: '17:00',
   continue_next_business_day: true,
 })
