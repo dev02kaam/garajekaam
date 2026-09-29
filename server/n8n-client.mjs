@@ -26,6 +26,9 @@ function configuredWebhook(rawValue) {
 }
 
 const campaignWebhook = configuredWebhook(rawCampaignWebhook)
+const dekaamWebhook = configuredWebhook(process.env.N8N_DEKAAM_WEBHOOK_URL?.trim()
+ || (campaignWebhook ? new URL('/webhook/dekaam/campanas', campaignWebhook).href : ''))
+const productWebhook = id => id === 'deca' ? dekaamWebhook : campaignWebhook
 
 function safeFilename(value) {
   return basename(value || 'contactos.csv')
@@ -45,13 +48,14 @@ async function responsePayload(response) {
   return { message: text }
 }
 
-export function campaignWebhookConfigured() {
-  return Boolean(campaignWebhook)
+export function campaignWebhookConfigured(productId = 'ficharia') {
+  return Boolean(productWebhook(productId))
 }
 
 export async function launchCampaign({ file, prompt, source, validContacts, campaign_id, productId = 'ficharia' }) {
   resolveProduct(productId, 'campaigns')
-  if (!campaignWebhook) {
+  const selectedWebhook = productWebhook(productId)
+  if (!selectedWebhook) {
     const error = new Error('El webhook de campañas de n8n todavía no está configurado.')
     error.code = 'N8N_NOT_CONFIGURED'
     throw error
@@ -61,6 +65,7 @@ export async function launchCampaign({ file, prompt, source, validContacts, camp
   form.append('csv', new Blob([file.buffer], { type: 'text/csv' }), safeFilename(file.originalname))
   form.append('prompt', prompt)
   form.append('source', source)
+  form.append('product_id', productId)
   form.append('validContacts', String(validContacts))
   if (campaign_id) form.append('campaign_id', campaign_id)
 
@@ -69,7 +74,7 @@ export async function launchCampaign({ file, prompt, source, validContacts, camp
     headers.Authorization = `Bearer ${process.env.N8N_WEBHOOK_AUTH_TOKEN.trim()}`
   }
 
-  const response = await fetch(campaignWebhook, {
+  const response = await fetch(selectedWebhook, {
     method: 'POST',
     headers,
     body: form,
@@ -82,6 +87,10 @@ export async function launchCampaign({ file, prompt, source, validContacts, camp
     error.code = 'N8N_REJECTED'
     error.status = response.status
     throw error
+  }
+  if (payload.product_id !== undefined && payload.product_id !== productId) {
+    const error = new Error('El servicio devolvió una respuesta de otro producto.')
+    error.code = 'PRODUCT_ID_MISMATCH'; error.status = 502; throw error
   }
   return payload
 }

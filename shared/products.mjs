@@ -8,9 +8,9 @@ export const productCatalog = Object.freeze({
       campaigns: true, replies: true, followups: true, creative_generate: true, creative_review: true }),
   }),
   deca: Object.freeze({
-    id: 'deca', name: 'DECA · Una app de Kaam', description: 'Bajo construcción. Pendiente de información para habilitar sus automatizaciones.', status: 'preparing',
+    id: 'deca', name: 'DEKAAM', description: 'Gestión del DeCA digital y documentación del transporte.', status: 'active',
     capabilities: Object.freeze({ campaign_drafts: true, creative_drafts: true, image_library: true,
-      campaigns: false, replies: false, followups: false, creative_generate: false, creative_review: false }),
+      campaigns: true, replies: true, followups: false, creative_generate: false, creative_review: false }),
   }),
 })
 

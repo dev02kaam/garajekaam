@@ -160,7 +160,7 @@ export function CampaignImages({ csrfToken }: { csrfToken: string }) {
     </header>
 
     <p className="campaign-images-scope">{product.status === 'preparing'
-      ? 'Biblioteca propia de DECA. La selección se guarda para futuras campañas; los envíos siguen pendientes de configuración.'
+      ? 'Biblioteca de DEKAAM. Las imágenes seleccionadas se utilizarán en los correos de sus campañas.'
       : 'Lista compartida por todas las campañas de Ficharia. Cada correo usa una imagen activa. Los cambios se aplican a los próximos envíos, también en campañas en marcha.'}</p>
     <div className="campaign-images-feedback" aria-live="polite" role="status">{message && <p><Check aria-hidden="true" />{message}</p>}</div>
     {error && <p className="campaign-images-error" role="alert"><AlertTriangle aria-hidden="true" />{error}</p>}

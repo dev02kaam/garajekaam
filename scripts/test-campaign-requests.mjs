@@ -102,5 +102,10 @@ test('server forwards all contacts and the idempotency key to the webhook', asyn
     return json({ status: 'accepted', accepted_contacts: 4140 }, 202)
   })
   assert.equal((await launchCampaign({ file: { buffer: Buffer.from(csv), originalname: '4140.csv' }, prompt: 'Contactar a todas las empresas', source: 'garaje-kaam', validContacts: 4140, campaign_id: 'test-idempotent-campaign' })).accepted_contacts, 4140)
-  await assert.rejects(launchCampaign({ productId: 'deca' }), { code: 'PRODUCT_NOT_READY' })
+  t.mock.method(globalThis, 'fetch', async (url,init) => {
+    assert.equal(new URL(url).pathname,'/webhook/dekaam/campanas')
+    assert.equal(init.body.get('product_id'),'deca')
+    return json({status:'accepted',product_id:'deca'},202)
+  })
+  assert.equal((await launchCampaign({productId:'deca',file:{buffer:Buffer.from(csv),originalname:'4140.csv'},prompt:'Todas',source:'garaje-kaam',validContacts:4140})).product_id,'deca')
 })

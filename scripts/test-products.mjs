@@ -57,17 +57,17 @@ test('DECA y desconocidos nunca alcanzan el adaptador Ficharia', async () => {
     const res=await call('/deca/workflows/'+name)
     assert.equal(res.status,200)
     const data=await res.json()
-    assert.equal(data.product_id,'deca'); assert.equal(data.configured,false)
+    assert.equal(data.product_id,'deca'); assert.equal(typeof data.available,'boolean')
     assert.equal(JSON.stringify(data).includes('historical-ficharia'),false)
   }
-  for(const name of ['campaigns/launch','creative/generate','creative/review-request']) {
+  for(const name of ['creative/generate','creative/review-request']) {
     const res=await call('/deca/workflows/'+name,{method:'POST'})
     assert.equal(res.status,503); assert.equal((await res.json()).code,'PRODUCT_NOT_READY')
   }
   assert.equal((await call('/unknown/workflows/jobs')).status,404)
   assert.equal((await call('/deca/workflows/jobs', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{"product_id":"ficharia"}'})).status,400)
   assert.equal(adapterCalls,1)
-  await assert.rejects(launchCampaign({productId:'deca'}),{code:'PRODUCT_NOT_READY'})
+  await assert.rejects(launchCampaign({productId:'deca'}),{code:'N8N_NOT_CONFIGURED'})
 })
 test('duplicados, claves, selección y archivos están aislados', async () => {
   first = (await ficharia.upload(file(bytes))).image

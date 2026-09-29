@@ -1790,7 +1790,7 @@ function BardoDashboard() {
 
   const selectedIncoming = selectedEmail && selectedConversation ? {
     fromEmail: selectedEmailDetail?.incoming.fromEmail || selectedEmail.incoming?.fromEmail || selectedConversation.email,
-    toEmail: selectedEmailDetail?.incoming.toEmail || selectedEmail.incoming?.toEmail || 'contacto@ficharia.com',
+    toEmail: selectedEmailDetail?.incoming.toEmail || selectedEmail.incoming?.toEmail || (isFicharia ? 'contacto@ficharia.com' : 'deca@kaam.es'),
     body: selectedEmailDetail?.incoming.body || selectedEmail.incoming?.body || selectedEmail.summary,
   } : null
   const selectedReply = selectedEmailDetail?.reply ? {
