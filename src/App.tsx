@@ -24,8 +24,6 @@ import { ApiError, authApi, type LoginResult } from './auth'
 import { useSession } from './useSession'
 import garagePoster from './assets/garage-integrated-five-jobs.png'
 
-const INITIAL_EMAIL = 'alex.benito@kaam.es'
-
 const agents: Array<{
   id: AgentId
   name: string
@@ -116,7 +114,7 @@ function LoginScreen({ csrfToken, setupRequired, onAuthenticated, onRefreshSecur
   onAuthenticated: (result: LoginResult) => void
   onRefreshSecurity: () => Promise<void>
 }) {
-  const [email, setEmail] = useState(INITIAL_EMAIL)
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
