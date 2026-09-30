@@ -52,6 +52,24 @@ export function campaignWebhookConfigured(productId = 'ficharia') {
   return Boolean(productWebhook(productId))
 }
 
+export function campaignImportConfigured(productId = 'ficharia') {
+  return campaignWebhookConfigured(productId) && Boolean(process.env.N8N_WEBHOOK_AUTH_TOKEN?.trim())
+}
+
+export async function startImportedCampaign({ productId, campaign_id, recovery_token }) {
+  resolveProduct(productId, 'campaigns')
+  if (!campaignImportConfigured(productId)) throw Object.assign(new Error('Falta configurar el webhook autenticado.'), { code: 'IMPORT_NOT_CONFIGURED' })
+  const url = new URL(productId === 'deca' ? '/webhook/dekaam/campanas/recuperar' : '/webhook/ficharia/campanas/recuperar', productWebhook(productId))
+  const response = await fetch(url, { method: 'POST', redirect: 'error',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.N8N_WEBHOOK_AUTH_TOKEN.trim()}` },
+    body: JSON.stringify({ campaign_id, recovery_token }), signal: AbortSignal.timeout(25_000) })
+  const result = await responsePayload(response)
+  if (!response.ok || result.accepted !== true || result.campaign_id !== campaign_id) {
+    throw Object.assign(new Error('La campaña está guardada, pero n8n no ha confirmado su inicio.'), { code: 'IMPORT_START_PENDING' })
+  }
+  return result
+}
+
 export async function launchCampaign({ file, prompt, source, validContacts, campaign_id, productId = 'ficharia' }) {
   resolveProduct(productId, 'campaigns')
   const selectedWebhook = productWebhook(productId)

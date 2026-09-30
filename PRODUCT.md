@@ -72,6 +72,13 @@ Los workflows no aparecen como diagramas abstractos, sino como personajes que tr
 - Workflow n8n de referencia: `C:\Users\USER\Desktop\Archivos_ABS\VisualStudio\flujoficharia\workflow\Ficharia _ AUTOSUFICIENTE _ IA guiada + espera 65-120 s terminado.json`.
 - La base PostgreSQL real contiene actualmente conversaciones, auditoría, campañas, seguimiento semanal y la vista unificada de jobs. El módulo creativo todavía depende de desplegar su migración operativa antes de mostrar datos reales.
 
+## Listas de contactos
+
+Las listas CSV de campañas admiten 100 MB y 1.000.000 de filas. La lectura en
+segundo plano muestra progreso y permite cancelarla; las listas mayores de
+10 MB o 10.000 filas se registran por bloques, en una sola campaña, manteniendo
+los horarios y cuotas de envío. Véase `IMPORTACION_CSV_GRANDES.md`.
+
 ## Imágenes de campañas
 
 - El Visionario incluye una pestaña **Imágenes** con las imágenes reales de la lista compartida `campaign_email_assets`. Cada correo selecciona una de las activas.

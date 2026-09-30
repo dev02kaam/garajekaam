@@ -1,5 +1,11 @@
 # Garaje Kaam multiproducto
 
+Las listas grandes de Ficharia y DEKAAM admiten hasta 100 MB y 1.000.000 de filas
+mediante importación por bloques en una sola campaña. Véase
+[IMPORTACION_CSV_GRANDES.md](IMPORTACION_CSV_GRANDES.md) para los límites actuales,
+el registro atómico y el despliegue. Los límites de 10 MB/10.000 filas que aparecen
+en la integración histórica corresponden únicamente al webhook CSV directo.
+
 Ficharia mantiene sus adaptadores y datos actuales. **DECA · Una app de Kaam**
 permite organizar su biblioteca de imágenes y preparar borradores de campaña y
 creatividad. Sus campañas, respuestas, seguimientos, generación y envío de

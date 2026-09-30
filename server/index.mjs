@@ -1,3 +1,6 @@
+import { createCampaignRecovery } from './campaign-recovery.mjs'
+import { campaignImportRouter } from './campaign-import-routes.mjs'
+import { campaignImportPolicy } from '../shared/campaign-import-policy.mjs'
 import { productRouter } from './product-routes.mjs'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -410,6 +413,8 @@ function dashboardRoute(loader) {
 }
 
 const fichariaWorkflows = express.Router()
+fichariaWorkflows.use(campaignImportRouter({ pool, productId: 'ficharia', schema: workflowSchema,
+  authenticate: requireAuthentication, protectCsrf: csrfSynchronisedProtection }))
 fichariaWorkflows.use((_req, res, next) => {
   const json = res.json.bind(res)
   res.json = body => json({ ...body, product_id: 'ficharia' })
@@ -489,6 +494,8 @@ fichariaWorkflows.post(
 app.use('/api/workflows', fichariaWorkflows)
 app.use('/api/products', productRouter({ pool, fichariaRouter: fichariaWorkflows, authenticate: requireAuthentication, protectCsrf: csrfSynchronisedProtection }))
 
+app.get('/api/campaign-recovery/status', requireAuthentication, (_req, res) => res.json(campaignRecovery.status()))
+
 app.use('/api', (_req, res) => res.status(404).json({ code: 'NOT_FOUND', message: 'Recurso no encontrado.' }))
 
 if (isProduction) {
@@ -517,17 +524,21 @@ app.use((error, _req, res, _next) => {
   res.status(500).json({ code: 'INTERNAL_ERROR', message: 'No se pudo completar la operación.' })
 })
 
+const campaignRecovery = createCampaignRecovery({ pool })
+
 const server = app.listen(port, host, async () => {
+  campaignRecovery.start()
   console.log(`API de Garaje Kaam escuchando en http://${host}:${port}`)
   if (await userQueries.count() === 0) console.log('No hay usuarios. Configura KAAM_INITIAL_ADMIN_* o ejecuta npm run user:init.')
 })
 
-server.requestTimeout = 15_000
+server.requestTimeout = campaignImportPolicy.requestTimeoutMs
 server.headersTimeout = 16_000
 server.keepAliveTimeout = 5_000
 server.on('error', (error) => console.error('Error del servidor HTTP:', error.message))
 
 async function shutdown(signal) {
+  campaignRecovery.stop()
   console.log(`Cerrando Garaje Kaam (${signal})...`)
   server.close(async () => {
     await closeDatabase()

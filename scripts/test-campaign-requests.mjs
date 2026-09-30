@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
 import ts from 'typescript'
 import { CAMPAIGN_REQUEST_TIMEOUT_MS, CAMPAIGN_WEBHOOK_TIMEOUT_MS } from '../shared/campaign-timeouts.mjs'
+import { campaignImportPolicy } from '../shared/campaign-import-policy.mjs'
 
 const compile = source => 'data:text/javascript;base64,' + Buffer.from(ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 },
@@ -12,6 +13,7 @@ const { request, SESSION_FAILURE_EVENT } = await import(authUrl)
 const workflowSource = (await readFile(new URL('../src/workflowApi.ts', import.meta.url), 'utf8'))
   .replace("'./auth'", JSON.stringify(authUrl))
   .replace("'../shared/campaign-timeouts.mjs'", JSON.stringify(new URL('../shared/campaign-timeouts.mjs', import.meta.url).href))
+  .replace("'../shared/campaign-import-policy.mjs'", JSON.stringify(new URL('../shared/campaign-import-policy.mjs', import.meta.url).href))
 const { createWorkflowApi } = await import(compile(workflowSource))
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 function sessionEvents(t) {
@@ -81,6 +83,56 @@ for (const product of ['ficharia', 'deca']) test(`${product}: 4,140 contacts, lo
   await assert.rejects(api.launchCampaign(form, 'csrf-test'))
   assert.equal(calls.length, 1)
   assert.equal(events.length, 0)
+})
+
+test('large imports use their own endpoint and upload deadline for both products', async t => {
+  sessionEvents(t)
+  const deadlines = []
+  t.mock.method(AbortSignal, 'timeout', ms => { deadlines.push(ms); return new AbortController().signal })
+  const calls = []
+  t.mock.method(globalThis, 'fetch', async (path, init) => { calls.push({ path, init }); return json({ accepted: true }, 202) })
+  for (const product of ['ficharia', 'deca']) {
+    const api = createWorkflowApi(product, new AbortController().signal, () => () => {})
+    await api.launchCampaign(new FormData(), 'csrf', true)
+    assert.equal(calls.at(-1).path, `/api/products/${product}/workflows/campaigns/import`)
+    assert.equal(deadlines.at(-1), campaignImportPolicy.requestTimeoutMs)
+  }
+})
+
+test('large campaign start sends only authenticated IDs and requires a matching acknowledgement', async t => {
+  const settings = {
+    NODE_ENV: 'test',
+    N8N_PROSPECTING_WEBHOOK_URL: 'http://127.0.0.1/webhook/ficharia/campanas',
+    N8N_DEKAAM_WEBHOOK_URL: 'http://127.0.0.1/webhook/dekaam/campanas',
+    N8N_WEBHOOK_AUTH_TOKEN: 'local-test-only',
+  }
+  const previous = Object.fromEntries(Object.keys(settings).map(key => [key, process.env[key]]))
+  Object.assign(process.env, settings)
+  t.after(() => {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key]
+      else process.env[key] = value
+    }
+  })
+  const { startImportedCampaign } = await import('../server/n8n-client.mjs?large-import-test')
+  const ids = { campaign_id: '9588f533-7f42-4c79-ad3e-a2bd69d59d04', recovery_token: '258c951d-e6e5-49dd-bb3b-6d291b1af97c' }
+  let calls = 0
+  let validAcknowledgement = true
+  for (const [productId, path] of [['ficharia', 'ficharia'], ['deca', 'dekaam']]) {
+    t.mock.method(globalThis, 'fetch', async (url, init) => {
+      calls++
+      assert.equal(new URL(url).pathname, `/webhook/${path}/campanas/recuperar`)
+      assert.equal(init.headers.Authorization, 'Bearer local-test-only')
+      assert.deepEqual(JSON.parse(init.body), ids)
+      assert.equal(init.redirect, 'error')
+      return json({ accepted: true, campaign_id: validAcknowledgement ? ids.campaign_id : 'wrong-campaign' }, 202)
+    })
+    validAcknowledgement = true
+    assert.equal((await startImportedCampaign({ productId, ...ids })).accepted, true)
+    validAcknowledgement = false
+    await assert.rejects(startImportedCampaign({ productId, ...ids }), { code: 'IMPORT_START_PENDING' })
+  }
+  assert.equal(calls, 4, 'the one-use ticket is not retried automatically')
 })
 
 test('server forwards all contacts and the idempotency key to the webhook', async t => {

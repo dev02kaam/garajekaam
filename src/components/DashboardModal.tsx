@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { ApiError } from '../auth'
+import { campaignImportPolicy } from '../../shared/campaign-import-policy.mjs'
 import { CampaignImages } from './CampaignImages'
 import { BardoOptouts } from './BardoOptouts'
 import marketingAgriculture from '../assets/marketing-agriculture-automation.webp'
@@ -697,6 +698,9 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
   const campaignImagesTabRef = useRef<HTMLButtonElement>(null)
   const [summary, setSummary] = useProductMemory<CsvSummary | null>('campaign-summary', null)
   const [csvFile, setCsvFile] = useProductMemory<File | null>('campaign-csv', null)
+  const csvReader = useRef<Worker | null>(null)
+  const [csvReadProgress, setCsvReadProgress] = useState<number | null>(null)
+  useEffect(() => () => { csvReader.current?.terminate() }, [])
   const [prompt, setPrompt] = useProductMemory('campaign-prompt', '')
   const [submission, setSubmission] = useProductMemory<{ file: File; prompt: string; id: string } | null>('campaign-submission', null)
   const [history, setHistory] = useProductMemory<PromptHistoryItem[]>('campaign-history', [])
@@ -787,51 +791,49 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
       message: campaignWebhookReady ? 'Preparado para recibir una campaña.' : 'Webhook de campañas de n8n pendiente de configurar.',
     })
     if (!file) return
+    csvReader.current?.terminate()
+    csvReader.current = null
+    setCsvReadProgress(null)
+    setCsvFile(null)
+    setSummary(null)
     if (!file.name.toLowerCase().endsWith('.csv')) {
       setCsvFile(null)
       setSummary(null)
       setError('Ese archivo no es un CSV. Exporta tu lista como .csv y vuelve a intentarlo.')
       return
     }
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.size > campaignImportPolicy.maxBytes) {
       setCsvFile(null)
       setSummary(null)
-      setError('El CSV supera 10 MB. Divide la lista en varios archivos antes de enviarla.')
+      setError('El CSV supera 100 MB. Divide la lista en archivos más pequeños.')
       return
     }
-    const reader = new FileReader()
-    reader.onload = () => {
-      if (signal.aborted) return
-      const text = String(reader.result ?? '').trim()
-      const lines = text.split(/\r?\n/).filter(Boolean)
-      if (lines.length < 2) {
-        setCsvFile(null)
-        setSummary(null)
-        setError('El CSV no contiene contactos. Incluye una cabecera y al menos una fila.')
-        return
-      }
-      const separator = lines[0].includes(';') ? ';' : ','
-      const columns = lines[0].split(separator).map((column) => column.trim().replace(/^"|"$/g, ''))
-      const emailIndex = columns.findIndex((column) => /email|correo/i.test(column))
-      const rows = lines.slice(1)
-      const valid = rows.filter((line) => {
-        const cells = line.split(separator)
-        const candidate = emailIndex >= 0 ? cells[emailIndex] : line
-        return /[^\s@]+@[^\s@]+\.[^\s@]+/.test(candidate)
-      }).length
-      setCsvFile(file)
-      setSummary({ filename: file.name, rows: rows.length, valid, issues: rows.length - valid, columns })
+    const reader = new Worker(new URL('../campaignCsv.worker.ts', import.meta.url), { type: 'module' })
+    csvReader.current = reader
+    setCsvReadProgress(0)
+    reader.onmessage = (event: MessageEvent<{ progress?: number; summary?: CsvSummary; error?: string }>) => {
+      if (signal.aborted || csvReader.current !== reader) return
+      if (event.data.progress !== undefined) { setCsvReadProgress(event.data.progress); return }
+      setCsvReadProgress(null)
+      if (event.data.error) setError(event.data.error)
+      else if (event.data.summary) { setCsvFile(file); setSummary(event.data.summary) }
+      reader.terminate()
+      csvReader.current = null
     }
     reader.onerror = () => {
-      if (signal.aborted) return
-      setCsvFile(null)
-      setSummary(null)
+      if (signal.aborted || csvReader.current !== reader) return
+      setCsvReadProgress(null)
       setError('No hemos podido leer el archivo. Comprueba que no esté dañado.')
+      reader.terminate()
+      csvReader.current = null
     }
-    reader.readAsText(file)
+    reader.postMessage(file)
   }
 
   const removeCsv = () => {
+    csvReader.current?.terminate()
+    csvReader.current = null
+    setCsvReadProgress(null)
     setCsvFile(null)
     setSummary(null)
     setError('')
@@ -877,7 +879,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
       return
     }
 
-    setRun({ state: 'sending', message: 'Enviando CSV e instrucción a n8n…', updatedAt: createdAt })
+    setRun({ state: 'sending', message: 'Cargando la lista y registrando la campaña…', updatedAt: createdAt })
 
     try {
       const body = new FormData()
@@ -887,7 +889,8 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
       body.append('validContacts', String(summary.valid))
       body.append('campaign_id', historyId)
 
-      const payload = await workflowApi.launchCampaign(body, csrfToken)
+      const large = csvFile.size > campaignImportPolicy.legacyMaxBytes || summary.rows > campaignImportPolicy.legacyMaxRows
+      const payload = await workflowApi.launchCampaign(body, csrfToken, large)
       const data = payload
       const remoteMessage = typeof data?.message === 'string'
         ? data.message
@@ -1157,6 +1160,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
           <div className="campaign-section-heading">
             <div><FileSpreadsheet aria-hidden="true" /><h3 id="csv-section-title">Lista de contactos</h3></div>
             {summary && <button className="text-action" type="button" onClick={removeCsv}><X /> Quitar</button>}
+            {csvReadProgress !== null && <button className="text-action" type="button" onClick={removeCsv}><X /> Cancelar lectura</button>}
           </div>
 
           {!summary ? (
@@ -1173,7 +1177,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
             >
               <input type="file" accept=".csv,text/csv" onChange={(event) => readCsv(event.target.files?.[0])} />
               <Upload aria-hidden="true" />
-              <span><strong>Suelta el CSV</strong><small>o selecciónalo · máximo 10 MB</small></span>
+              <span aria-live="polite"><strong>{csvReadProgress === null ? 'Suelta el CSV' : `Leyendo CSV · ${csvReadProgress}%`}</strong><small>o selecciónalo · máximo 100 MB y 1.000.000 de filas</small></span>
             </label>
           ) : (
             <div className="campaign-file" aria-live="polite">
@@ -1181,7 +1185,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
               <div className="campaign-file-stats">
                 <span><strong>{summary.rows}</strong> filas</span>
                 <span><strong>{summary.valid}</strong> contactos</span>
-                <span className={summary.issues ? 'has-issues' : ''}><strong>{summary.issues}</strong> revisar</span>
+                <span className={summary.issues ? 'has-issues' : ''}><strong>{summary.issues}</strong> descartados</span>
               </div>
             </div>
           )}
@@ -1203,7 +1207,7 @@ function ProspectoDashboard({ csrfToken }: { csrfToken: string }) {
             placeholder="Ej. Agricultura el lunes y martes; bodegas el miércoles, jueves y viernes, siempre de 09:00 a 13:00…"
           />
           <button className="primary-action launch-campaign" type="button" disabled={!canLaunch} onClick={launchWorkflow}>
-            {run.state === 'sending' ? <><LoaderCircle className="spin" /> Enviando a n8n</> : <><Send /> Lanzar campaña</>}
+            {run.state === 'sending' ? <><LoaderCircle className="spin" /> Registrando campaña</> : <><Send /> Lanzar campaña</>}
           </button>
         </section>
 

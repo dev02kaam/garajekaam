@@ -12,6 +12,7 @@
     "test:security": "node --env-file-if-exists=.env scripts/security-smoke.mjs",
     "test:sessions": "node --test scripts/test-sessions.mjs",
     "test:campaign-requests": "node --test scripts/test-campaign-requests.mjs",
+    "test:campaign-import": "node --test scripts/test-campaign-csv.mjs scripts/test-campaign-import-routes.mjs",
     "test:followups": "node --test scripts/test-followups.mjs",
     "test:campaign-images": "node --test scripts/test-campaign-images.mjs",
     "db:campaign-images": "node --env-file-if-exists=.env scripts/migrate-campaign-images.mjs",

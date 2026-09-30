@@ -4,11 +4,13 @@ import {z} from 'zod'
 import {createWorkflowData} from './workflow-data-store.mjs'
 import {productConfiguration,resolveProduct} from './products.mjs'
 import {campaignWebhookConfigured,launchCampaign} from './n8n-client.mjs'
+import {campaignImportRouter} from './campaign-import-routes.mjs'
 
 export function dekaamWorkflowRouter({pool,authenticate,protectCsrf}) {
  const router=express.Router(), config=productConfiguration('deca')
  const data=createWorkflowData({pool,schema:config.schema,productId:'deca'})
  router.use(authenticate)
+ router.use(campaignImportRouter({pool,productId:'deca',authenticate,protectCsrf}))
  router.use((_req,res,next)=>{const json=res.json.bind(res);res.json=body=>json({...body,product_id:'deca'});res.set('Cache-Control','private, no-store');next()})
  const parse=(schema,value,res)=>{const r=schema.safeParse(value);if(r.success)return r.data;res.status(400).json({code:'INVALID_INPUT',message:'Revisa los datos de la solicitud.'});return null}
  const limitSchema=z.object({limit:z.coerce.number().int().min(1).max(200).default(100)}).strict()

@@ -1,4 +1,5 @@
-// Shared by the dashboard and the workflow generator for both products.
+// Mail policy and legacy CSV webhook limits, shared with both workflow generators.
+// Larger dashboard imports use campaign-import-policy.mjs and streamed SQL intake.
 // Provider throughput stays configurable; campaign size is not a daily limit.
 export const campaignPolicy = Object.freeze({
   max_csv_rows: 10_000,

@@ -1,5 +1,6 @@
 import { request as rawRequest, type ApiRequestInit } from './auth'
 import { CAMPAIGN_REQUEST_TIMEOUT_MS } from '../shared/campaign-timeouts.mjs'
+import { campaignImportPolicy } from '../shared/campaign-import-policy.mjs'
 
 export type WorkflowCampaign = {
   id: string
@@ -253,11 +254,11 @@ export function createWorkflowApi(productId: string, scopeSignal: AbortSignal, b
   conversationEmail: (emailId: string) => request<{ available: boolean; email: WorkflowConversationEmail | null }>(`${base}/conversations/emails/${encodeURIComponent(emailId)}`),
   followups: (limit = 100, signal?: AbortSignal) => request<{ available: boolean; conversations: WorkflowFollowupConversation[] }>(`${base}/followups?limit=${limit}`, { signal }),
   creatives: (limit = 100) => request<{ available: boolean; assets: WorkflowCreative[] }>(`${base}/creatives?limit=${limit}`),
-  launchCampaign: (form: FormData, csrfToken: string) => request<Record<string, unknown>>(base + '/campaigns/launch', {
+  launchCampaign: (form: FormData, csrfToken: string, large = false) => request<Record<string, unknown>>(base + (large ? '/campaigns/import' : '/campaigns/launch'), {
     method: 'POST',
     headers: { 'X-CSRF-Token': csrfToken },
     body: form,
-    timeoutMs: CAMPAIGN_REQUEST_TIMEOUT_MS,
+    timeoutMs: large ? campaignImportPolicy.requestTimeoutMs : CAMPAIGN_REQUEST_TIMEOUT_MS,
   }),
 }
 

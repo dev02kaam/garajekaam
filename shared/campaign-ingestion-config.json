@@ -1,0 +1,42 @@
+{
+  "ficharia": {
+    "opencode_url": "https://opencode.ai/zen/go/v1/chat/completions",
+    "opencode_model": "glm-5.2",
+    "from_address": "contacto@ficharia.com",
+    "from_name": "Lucía | FicharIA",
+    "reply_to": "contacto@ficharia.com",
+    "approved_product_statement": "Ficharia ayuda a centralizar el control horario y la gestión de fichajes del equipo.",
+    "max_csv_bytes": 10485760,
+    "max_csv_rows": 10000,
+    "max_columns": 100,
+    "segmentation_batch_size": 5,
+    "max_plan_attempts": 3,
+    "max_segmentation_attempts": 3,
+    "max_emails_per_day": 2000,
+    "max_emails_per_hour": 300,
+    "max_sends_per_run": 10,
+    "default_window_start": "08:30",
+    "default_window_end": "17:00",
+    "timezone": "Europe/Madrid"
+  },
+  "deca": {
+    "opencode_url": "https://opencode.ai/zen/go/v1/chat/completions",
+    "opencode_model": "glm-5.2",
+    "from_address": "deca@kaam.es",
+    "from_name": "Lucía | DEKAAM",
+    "reply_to": "deca@kaam.es",
+    "approved_product_statement": "DEKAAM ayuda a centralizar el control horario y la gestión de fichajes del equipo.",
+    "max_csv_bytes": 10485760,
+    "max_csv_rows": 10000,
+    "max_columns": 100,
+    "segmentation_batch_size": 5,
+    "max_plan_attempts": 3,
+    "max_segmentation_attempts": 3,
+    "max_emails_per_day": 2000,
+    "max_emails_per_hour": 300,
+    "max_sends_per_run": 10,
+    "default_window_start": "08:30",
+    "default_window_end": "17:00",
+    "timezone": "Europe/Madrid"
+  }
+}
