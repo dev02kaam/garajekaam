@@ -3,6 +3,7 @@ import { flushSync } from 'react-dom'
 import { ApiError, authApi, invalidateRequests, SESSION_FAILURE_EVENT, type LoginResult, type SessionState, type SessionTiming } from './auth'
 
 type AuthPhase = 'checking' | 'anonymous' | 'authenticated' | 'unavailable'
+const SESSION_RECHECK_MS = 5 * 60_000
 const LOGOUT_PENDING_KEY = 'kaam-logout-pending'
 const EXPIRED_MESSAGE = 'Tu sesión ha caducado. Vuelve a identificarte.'
 const OFFLINE_MESSAGE = 'Sin conexión con el servidor. El acceso está bloqueado hasta verificar la sesión.'
@@ -20,6 +21,7 @@ export function useSession(onLock: () => void) {
   const busy = useRef<number | null>(null)
   const channel = useRef<BroadcastChannel | null>(null)
   const lastActivitySent = useRef(Date.now())
+  const lastSessionCheck = useRef(0)
   const activityPending = useRef(false)
   const recheck = useRef<() => Promise<void>>(async () => {})
 
@@ -79,6 +81,7 @@ export function useSession(onLock: () => void) {
     const version = revision.current
     if (busy.current === version) return
     busy.current = version
+    lastSessionCheck.current = Date.now()
     try {
       let state = await authApi.session()
       if (version !== revision.current) return
@@ -96,7 +99,12 @@ export function useSession(onLock: () => void) {
       if (!state.authenticated) onLock()
       acceptSession(state)
     } catch (caught) {
-      if (version === revision.current) lock(caught instanceof Error ? caught.message : OFFLINE_MESSAGE)
+      if (version !== revision.current) return
+      // A transient background check must not unmount a valid session or abort
+      // a CSV upload. Expiry and explicit 401/CSRF failures still lock access.
+      if (current.current?.authenticated && Date.now() < deadline.current
+        && caught instanceof ApiError && (caught.status === 0 || caught.status >= 500)) return
+      lock(caught instanceof Error ? caught.message : OFFLINE_MESSAGE)
     } finally { if (busy.current === version) busy.current = null }
   }, [acceptSession, lock, onLock, rememberLogout])
 
@@ -106,6 +114,7 @@ export function useSession(onLock: () => void) {
       revision.current += 1
       invalidateRequests()
       lastActivitySent.current = Date.now()
+      lastSessionCheck.current = Date.now()
       setSessionMessage('')
       acceptSession({ authenticated: true, ...result, setupRequired: false })
     } catch (caught) { lock(caught instanceof Error ? caught.message : OFFLINE_MESSAGE) }
@@ -137,21 +146,19 @@ export function useSession(onLock: () => void) {
       lock(error.status === 401 || error.code === 'INVALID_CSRF' ? EXPIRED_MESSAGE : OFFLINE_MESSAGE)
     }
     const onOffline = () => lock(OFFLINE_MESSAGE)
-    const onResume = () => {
+    const refreshIfDue = () => {
       if (document.visibilityState !== 'visible') return
-      flushSync(() => lock('', 'checking'))
-      void refreshSession()
+      if (current.current?.authenticated) {
+        if (Date.now() >= deadline.current) { expireSession(); return }
+        if (Date.now() - lastSessionCheck.current >= SESSION_RECHECK_MS) void refreshSession()
+      } else if (!current.current) void refreshSession()
     }
-    const onVisibility = () => {
-      if (document.visibilityState === 'hidden') {
-        // Prevent a private DOM snapshot from remaining in a suspended/restored page.
-        flushSync(() => lock('', 'checking'))
-      } else onResume()
-    }
-    const onFocus = () => {
-      // A file picker also returns focus: keep its draft while a still-valid session is checked.
-      if (current.current?.authenticated && Date.now() < deadline.current) void refreshSession()
-      else onResume()
+    // Hiding a tab or opening the file picker does not end a session. Keep the
+    // mounted panel and its request scope until expiry, logout or revocation.
+    const onVisibility = () => { if (document.visibilityState === 'visible') refreshIfDue() }
+    const onFocus = refreshIfDue
+    const onResume = () => {
+      if (document.visibilityState === 'visible') void refreshSession()
     }
     const onPageHide = () => flushSync(() => lock('', 'checking'))
     const onPageShow = (event: PageTransitionEvent) => { if (event.persisted) onResume() }
@@ -178,7 +185,13 @@ export function useSession(onLock: () => void) {
           setSessionState(current.current)
         }
       } catch (caught) {
-        if (version === revision.current) lock(caught instanceof Error ? caught.message : OFFLINE_MESSAGE)
+        if (version !== revision.current) return
+        if (current.current?.authenticated && Date.now() < deadline.current
+          && caught instanceof ApiError && (caught.status === 0 || caught.status >= 500)) {
+          activityPending.current = true
+          return
+        }
+        lock(caught instanceof Error ? caught.message : OFFLINE_MESSAGE)
       }
       finally { if (busy.current === version) busy.current = null }
     }
@@ -201,8 +214,8 @@ export function useSession(onLock: () => void) {
     const interval = window.setInterval(() => {
       if (document.visibilityState !== 'visible') return
       void sendActivity()
-      if (busy.current !== revision.current) void refreshSession()
-    }, 30_000)
+      if (current.current?.authenticated && busy.current !== revision.current) refreshIfDue()
+    }, 60_000)
     void refreshSession()
     return () => {
       revision.current += 1
